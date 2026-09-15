@@ -1,7 +1,14 @@
-package com.zhixiaojiang;
+package com.zhixiaojiang.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.zhixiaojiang.auth.TeacherScope;
 import com.zhixiaojiang.common.ApiResult;
+import com.zhixiaojiang.common.AuditRecorder;
+import com.zhixiaojiang.common.constant.AttendanceStatus;
+import com.zhixiaojiang.common.constant.StudentStatus;
+import com.zhixiaojiang.common.constant.StudentTaskStatus;
+import com.zhixiaojiang.common.constant.WarningRule;
+import com.zhixiaojiang.common.util.JsonValues;
 import com.zhixiaojiang.common.constant.WarningLevel;
 import com.zhixiaojiang.common.constant.WarningStatus;
 import jakarta.servlet.http.HttpServletRequest;
@@ -13,16 +20,24 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 import java.sql.ResultSet;
+import java.time.LocalDate;
 import java.sql.SQLException;
 import java.util.*;
 
 @RestController @RequestMapping("/api/v1/warnings")
-public class WarningReviewController {
+public class WarningController {
     /** 预警列表的“全部状态”筛选值，仅用于查询，不属于 WarningStatus 的取值域。 */
     private static final String STATUS_ALL = "ALL";
 
     private final JdbcTemplate db; private final ObjectMapper json;
-    public WarningReviewController(JdbcTemplate db,ObjectMapper json){this.db=db;this.json=json;}
+    private final TeacherScope scope; private final AuditRecorder audit;
+
+    public WarningController(JdbcTemplate db, ObjectMapper json, TeacherScope scope, AuditRecorder audit) {
+        this.db = db;
+        this.json = json;
+        this.scope = scope;
+        this.audit = audit;
+    }
     public record Review(@NotBlank @Size(max=400) String note,
                          @NotBlank @Pattern(regexp=WarningStatus.PATTERN_TRIAGE) String expectedStatus,
                          boolean escalate) {}
@@ -51,14 +66,46 @@ public class WarningReviewController {
         var warning=owned(id,request,true);checkStatus(warning,review);
         if(!WarningStatus.OPEN.name().equals(warning.get("status")))throw new ResponseStatusException(HttpStatus.CONFLICT,"该预警已研判，不能重复提交");
         db.update("update warning_record set status=?,teacher_note=?,level=? where id=?",WarningStatus.REVIEWED.name(),review.note().trim(),review.escalate()?WarningLevel.MANUAL.name():warning.get("level"),id);
-        audit(actor(request),id,"TRIAGE","教师研判："+review.note().trim());return ApiResult.ok(Map.of("saved",true,"status",WarningStatus.REVIEWED.name()));
+        audit.record(actor(request),"TRIAGE","warning_record",id,"教师研判："+review.note().trim());return ApiResult.ok(Map.of("saved",true,"status",WarningStatus.REVIEWED.name()));
     }
     @PostMapping("/{id}/close") @Transactional
     Map<String,Object> close(@PathVariable long id,@Valid @RequestBody Review review,HttpServletRequest request){
         var warning=owned(id,request,true);checkStatus(warning,review);
         db.update("update warning_record set status=?,closed_at=now() where id=?",WarningStatus.CLOSED.name(),id);
-        audit(actor(request),id,"CLOSE","关闭原因："+review.note().trim());return ApiResult.ok(Map.of("saved",true,"status",WarningStatus.CLOSED.name()));
+        audit.record(actor(request),"CLOSE","warning_record",id,"关闭原因："+review.note().trim());return ApiResult.ok(Map.of("saved",true,"status",WarningStatus.CLOSED.name()));
     }
+    @PostMapping("/analyze")
+    @Transactional
+    Map<String, Object> analyze(HttpServletRequest req) {
+        int created = 0;
+        LocalDate today = LocalDate.now(), since = today.minusDays(13), priorSince = today.minusDays(27);
+        for (Map<String, Object> s : db.queryForList("select s.id from student s join class_room c on c.id=s.class_id where c.teacher_id=? and s.status=?", scope.teacher(req), StudentStatus.ACTIVE.name())) {
+            long sid = ((Number) s.get("id")).longValue();
+            List<Map<String, Object>> scores = db.queryForList("select score/full_score ratio,score from score_record where student_id=? and subject='数学' order by occurred_on desc limit 4", sid);
+            boolean decline = scores.size() >= 4 && ((Number) scores.get(3).get("ratio")).doubleValue() > ((Number) scores.get(2).get("ratio")).doubleValue() && ((Number) scores.get(2).get("ratio")).doubleValue() > ((Number) scores.get(1).get("ratio")).doubleValue() && ((Number) scores.get(1).get("ratio")).doubleValue() > ((Number) scores.get(0).get("ratio")).doubleValue();
+            boolean low = scores.size() >= 2 && scores.stream().limit(2).allMatch(x -> ((Number) x.get("ratio")).doubleValue() < 0.6);
+            if (decline || low) {
+                int n = db.update("insert ignore into warning_record(student_id,level,rule_code,summary,evidence_json,status) values(?,?,?,?,?,?)", sid, decline ? WarningLevel.FOCUS.name() : WarningLevel.ATTENTION.name(), decline ? WarningRule.SCORE_DECLINE.name() : WarningRule.SCORE_LOW.name(), decline ? "同科目最近四次考试连续下降" : "最近两次考试低于及格线", JsonValues.toJson(List.of("数学成绩趋势由规则引擎计算")), WarningStatus.OPEN.name());
+                created += n;
+            }
+            Integer late = db.queryForObject("select count(*) from attendance_record where student_id=? and status=? and attendance_date>=?", Integer.class, sid, AttendanceStatus.LATE.name(), since);
+            if (late != null && late >= 3) {
+                created += db.update("insert ignore into warning_record(student_id,level,rule_code,summary,evidence_json,status) values(?,?,?,?,?,?)", sid, WarningLevel.ATTENTION.name(), WarningRule.LATE_14D.name(), "最近14天迟到至少3次", JsonValues.toJson(List.of("迟到次数=" + late)), WarningStatus.OPEN.name());
+            }
+            Integer overdue = db.queryForObject("select count(*) from student_task st join growth_task gt on gt.id=st.task_id where st.student_id=? and gt.due_on<? and st.status<>?", Integer.class, sid, today, StudentTaskStatus.COMPLETED.name());
+            if (overdue != null && overdue >= 2) {
+                created += db.update("insert ignore into warning_record(student_id,level,rule_code,summary,evidence_json,status) values(?,?,?,?,?,?)", sid, WarningLevel.ATTENTION.name(), WarningRule.TASK_OVERDUE.name(), "至少2项到期任务未完成", JsonValues.toJson(List.of("未完成到期任务=" + overdue)), WarningStatus.OPEN.name());
+            }
+            Integer recentActivity = db.queryForObject("select count(*) from activity_record where student_id=? and activity_date>=?", Integer.class, sid, since);
+            Integer priorActivity = db.queryForObject("select count(*) from activity_record where student_id=? and activity_date>=? and activity_date<?", Integer.class, sid, priorSince, since);
+            if (priorActivity != null && priorActivity >= 2 && recentActivity != null && recentActivity * 2 <= priorActivity) {
+                created += db.update("insert ignore into warning_record(student_id,level,rule_code,summary,evidence_json,status) values(?,?,?,?,?,?)", sid, WarningLevel.ATTENTION.name(), WarningRule.ACTIVITY_DROP.name(), "最近14天活动参与较前14天下降至少一半", JsonValues.toJson(List.of("前期=" + priorActivity, "近期=" + recentActivity)), WarningStatus.OPEN.name());
+            }
+        }
+        audit.record(req, "ANALYZE", "warning_record", 0, "执行规则预警分析");
+        return ApiResult.ok(Map.of("source", "TEMPLATE", "message", "已按规则完成趋势筛查", "created", created, "disclaimer", "AI辅助建议，仅供教师参考"));
+    }
+
     private void checkStatus(Map<String,Object> warning,Review review){if(!Objects.equals(warning.get("status"),review.expectedStatus()))throw new ResponseStatusException(HttpStatus.CONFLICT,"预警状态已变化，请重新读取后处理");}
     private Map<String,Object> owned(long id,HttpServletRequest request,boolean lock){
         var warnings=db.query(SELECT+"where w.id=? and c.teacher_id=?"+(lock?" for update":""),(rs,n)->row(rs),id,actor(request));
@@ -73,5 +120,4 @@ public class WarningReviewController {
         return data;
     }
     private long actor(HttpServletRequest request){Object id=request.getAttribute("userId");if(id==null)throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"请先登录");return Long.parseLong(id.toString());}
-    private void audit(long actor,long id,String action,String note){db.update("insert into audit_log(actor_id,action,entity_type,entity_id,summary) values(?,?,'warning_record',?,?)",actor,action,id,note);}
 }
