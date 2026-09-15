@@ -218,17 +218,60 @@ public class ApiController {
     Map<String, Object> createIntervention(@RequestBody Map<String, Object> b, HttpServletRequest req) {
         long sid = Long.parseLong(String.valueOf(b.get("studentId")));
         scope.requireStudent(sid, req);
+        Long warningId = longOrNull(b.get("warningId"));
+        if (warningId != null) requireWarningOfStudent(warningId, sid);
         String title = reqString(b, "title", "阶段成长支持方案");
         String suggestions = jsonValue(b.getOrDefault("suggestions", List.of("班主任个别谈话", "两周后复评")));
-        long id = insertReturningId("insert into intervention_plan(student_id,title,status,suggestions_json,teacher_note,review_at,created_by) values(?,?, 'DRAFT',?,?,?,?)", sid, title, suggestions, b.get("teacherNote"), parseDate(b.get("reviewAt")), userId(req));
-        audit(req, "CREATE", "intervention_plan", id, "创建帮扶草案");
+        long id = insertReturningId("insert into intervention_plan(student_id,warning_id,title,status,suggestions_json,teacher_note,review_at,created_by) values(?,?,?, 'DRAFT',?,?,?,?)", sid, warningId, title, suggestions, b.get("teacherNote"), parseDate(b.get("reviewAt")), userId(req));
+        audit(req, "CREATE", "intervention_plan", id, warningId == null ? "创建帮扶草案" : "由预警 #" + warningId + " 创建帮扶草案");
         return ok(Map.of("id", id, "status", "DRAFT"));
+    }
+
+    /**
+     * 帮扶方案详情：方案本身 + 执行过程记录，供教师审核与复评页面使用。
+     *
+     * <p>这里显式构造 camelCase 键，不用 SQL 别名：H2（demo profile）会把未加引号的别名折叠成小写，
+     * 而 MySQL 保留大小写，直接依赖别名会让两套数据库返回的 JSON 键不一致。
+     */
+    @GetMapping("/interventions/{id}")
+    Map<String, Object> intervention(@PathVariable long id, HttpServletRequest req) {
+        scope.requirePlan(id, req, false);
+        Map<String, Object> plan = db.queryForObject(
+                "select i.id,i.student_id,i.warning_id,i.title,i.status,i.suggestions_json,i.teacher_note,i.review_at,i.created_at,s.name from intervention_plan i join student s on s.id=i.student_id where i.id=?",
+                (rs, n) -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    Object warningId = rs.getObject("warning_id");
+                    Object reviewAt = rs.getObject("review_at");
+                    row.put("id", rs.getLong("id"));
+                    row.put("studentId", rs.getLong("student_id"));
+                    row.put("warningId", warningId == null ? null : ((Number) warningId).longValue());
+                    row.put("studentName", rs.getString("name"));
+                    row.put("title", rs.getString("title"));
+                    row.put("status", rs.getString("status"));
+                    row.put("suggestions", jsonList(rs.getString("suggestions_json")));
+                    row.put("teacherNote", rs.getString("teacher_note"));
+                    row.put("reviewAt", reviewAt == null ? null : reviewAt.toString());
+                    row.put("createdAt", rs.getTimestamp("created_at").toString());
+                    return row;
+                }, id);
+        var records = db.query("select id,action,status,occurred_on,result,created_by from intervention_record where plan_id=? order by id",
+                (rs, n) -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("id", rs.getLong("id"));
+                    row.put("action", rs.getString("action"));
+                    row.put("status", rs.getString("status"));
+                    row.put("occurredOn", rs.getObject("occurred_on").toString());
+                    row.put("result", rs.getString("result"));
+                    row.put("createdBy", rs.getLong("created_by"));
+                    return row;
+                }, id);
+        return ok(Map.of("plan", plan, "records", records));
     }
 
     @PutMapping("/interventions/{id}")
     Map<String, Object> updateIntervention(@PathVariable long id, @RequestBody Map<String, Object> b, HttpServletRequest req) {
         scope.requirePlan(id, req, false);
-        db.update("update intervention_plan set title=coalesce(?,title),teacher_note=coalesce(?,teacher_note),review_at=coalesce(?,review_at) where id=?", b.get("title"), b.get("teacherNote"), parseDate(b.get("reviewAt")), id);
+        db.update("update intervention_plan set title=coalesce(?,title),teacher_note=coalesce(?,teacher_note),review_at=coalesce(?,review_at) where id=?", b.get("title"), b.get("teacherNote"), parseDateOrNull(b.get("reviewAt")), id);
         audit(req, "UPDATE", "intervention_plan", id, "更新帮扶草案");
         return ok(Map.of("saved", true));
     }
@@ -448,6 +491,29 @@ public class ApiController {
         return ok(Map.of("id", id));
     }
 
+    /** 预警必须属于同一个学生，避免把方案挂到其他班级的预警上。 */
+    private void requireWarningOfStudent(long warningId, long studentId) {
+        Integer owned = db.queryForObject("select count(*) from warning_record where id=? and student_id=?", Integer.class, warningId, studentId);
+        if (owned == null || owned == 0)
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND, "预警不存在或不属于该学生");
+    }
+
+    private Long longOrNull(Object value) {
+        if (value == null || String.valueOf(value).isBlank()) return null;
+        return Long.parseLong(String.valueOf(value));
+    }
+
+    /** 把 JSON 数组列解析成数组对象；解析失败时回退为空数组。 */
+    private List<Object> jsonList(String raw) {
+        if (raw == null || raw.isBlank()) return List.of();
+        try {
+            return json.readValue(raw, new TypeReference<List<Object>>() {
+            });
+        } catch (Exception e) {
+            return List.of();
+        }
+    }
+
     private Map<String, Object> emptyMetrics() {
         Map<String, Object> metrics = new LinkedHashMap<>();
         metrics.put("studentCount", 0);
@@ -485,6 +551,12 @@ public class ApiController {
 
     private LocalDate parseDate(Object value) {
         if (value == null || String.valueOf(value).isBlank()) return LocalDate.now();
+        return LocalDate.parse(String.valueOf(value));
+    }
+
+    /** 未提供日期时保留原值，供部分更新（coalesce）使用。 */
+    private LocalDate parseDateOrNull(Object value) {
+        if (value == null || String.valueOf(value).isBlank()) return null;
         return LocalDate.parse(String.valueOf(value));
     }
 

@@ -4,6 +4,8 @@ import StudentRecords from './components/StudentRecords.vue';
 import PointsPage from './components/PointsPage.vue';
 import TeacherProfile from './components/TeacherProfile.vue';
 import GrowthPage from './components/GrowthPage.vue';
+import WarningsPage from './components/WarningsPage.vue';
+import InterventionPage from './components/InterventionPage.vue';
 import { computed, ref, nextTick, onMounted, onUnmounted, watch } from 'vue';
 import { PanelLeft, Search, Bell, Languages, Palette, FlaskConical, Activity, LayoutDashboard, Radar, KeyRound, FileText, ListTodo, Wallet, MessagesSquare, UserRound, ArrowRight, ChevronUp, ChevronDown, Check, Circle, CreditCard, SquareTerminal, RadioTower, ShieldCheck, Timer, BookOpen, Flame, TrendingUp, X, UsersRound, GraduationCap, Coins, Target, ClipboardCheck, Sparkles } from 'lucide-vue-next';
 
@@ -83,7 +85,7 @@ async function apiGet(path: string) { const res = await fetch(`${apiBase}${path}
 async function loadCsrf() { try { const d = await apiGet('/auth/csrf'); csrfToken.value = d.token || ''; } catch { /* backend may be offline while the visual preview is used */ } }
 async function loadPage() {
   const requestedPage = active.value;
-  if (!school.value || ['概览','学生档案','成长画像','机智币','教师资料'].includes(requestedPage)) return;
+  if (!school.value || ['概览','学生档案','成长画像','机智币','教师资料','智能预警','一人一策'].includes(requestedPage)) return;
   try {
     if (requestedPage === '学生档案') { const d = await apiGet('/students?page=1&pageSize=50'); pageRows.value[requestedPage] = (d.items || []).map((x:any) => [x.name, String(x.growthIndex ?? '—'), '成长档案已建立', x.status === 'ACTIVE' ? '正常' : '已归档']); }
     if (requestedPage === '成长画像') { const d = await apiGet('/students/1'); const values = Object.fromEntries((d.growth || []).map((x:any) => [x.dimension, x.score])); pageRows.value[requestedPage] = [['小智',String(values.MORAL ?? '—'),String(values.SKILL ?? '—'),String(values.THINKING ?? '—'),String(values.SMART ?? '—')]]; }
@@ -194,6 +196,8 @@ onUnmounted(() => document.removeEventListener('keydown', keys));
       <PointsPage v-else-if="school && active === '机智币'" />
       <TeacherProfile v-else-if="school && active === '教师资料'" />
       <GrowthPage v-else-if="school && active === '成长画像'" />
+      <WarningsPage v-else-if="school && active === '智能预警'" />
+      <InterventionPage v-else-if="school && active === '一人一策'" />
       <div v-else class="page-scroll workspace-page">
         <div class="workspace-heading"><div><p class="eyebrow"><Sparkles/>班主任工作台</p><h1>{{ pageInfo[active]?.[0] || active }}</h1><p>{{ pageInfo[active]?.[1] || '持续记录学生成长，保持班级运行可见。' }}</p></div><button class="button primary" @click="pageAction(active)"><Sparkles/>{{ active === '智能预警' ? '执行规则分析' : active === '学生档案' ? '新增学生' : active === '一人一策' ? '生成帮扶方案' : active === '机智币' ? '新增积分记录' : active === '六机任务' ? '发布成长任务' : active === '班级诊改' ? '新增诊改目标' : '新增记录' }}</button></div>
         <div class="workspace-toolbar"><label class="inline-search"><Search/><input v-model="pageSearch" placeholder="搜索当前页面"/><kbd>⌘ K</kbd></label><span class="result-count">{{ rowsForActive.length }} 条记录 · {{ live ? '已连接 Oracle' : '演示数据' }}</span></div>

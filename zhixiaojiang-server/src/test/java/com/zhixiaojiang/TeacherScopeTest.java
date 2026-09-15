@@ -122,6 +122,8 @@ class TeacherScopeTest {
         assertEquals(1, plans.size());
         assertEquals(200, plans.get(0).path("id").asLong());
         http.perform(json(other, post("/api/v1/interventions"), "{\"studentId\":1,\"title\":\"越权方案\"}")).andExpect(status().isNotFound());
+        http.perform(json(other, post("/api/v1/interventions"), "{\"studentId\":200,\"warningId\":1,\"title\":\"挂到别人预警\"}")).andExpect(status().isNotFound());
+        http.perform(as(other, get("/api/v1/interventions/1"))).andExpect(status().isNotFound());
         http.perform(json(other, put("/api/v1/interventions/1"), "{\"title\":\"越权改名\"}")).andExpect(status().isNotFound());
         http.perform(json(other, post("/api/v1/interventions/1/transition"), "{\"status\":\"CONFIRMED\"}")).andExpect(status().isNotFound());
         http.perform(json(other, post("/api/v1/interventions/1/records"), "{\"action\":\"越权记录\"}")).andExpect(status().isNotFound());
@@ -172,5 +174,16 @@ class TeacherScopeTest {
         assertEquals(ownTargets, data(as(own, get("/api/v1/class-diagnoses"))).path("items").size());
         assertEquals(ownPlans, data(as(own, get("/api/v1/interventions"))).path("items").size());
         assertEquals(ownTasks, data(as(own, get("/api/v1/growth-tasks"))).path("items").size());
+
+        // 帮扶方案详情：建议列表、预警关联与执行过程记录可读（页面审核与复评所需）
+        long linked = data(json(own, post("/api/v1/interventions"),
+                "{\"studentId\":1,\"warningId\":1,\"title\":\"详情验证\",\"suggestions\":[\"班主任个别谈话\",\"两周后复评\"]}")).path("id").asLong();
+        var detail = data(as(own, get("/api/v1/interventions/" + linked)));
+        assertEquals("DRAFT", detail.path("plan").path("status").asText());
+        assertEquals(2, detail.path("plan").path("suggestions").size());
+        assertEquals(1, detail.path("plan").path("warningId").asLong());
+        assertEquals(0, detail.path("records").size());
+        http.perform(json(own, post("/api/v1/interventions/" + linked + "/records"), "{\"action\":\"班主任个别谈话\",\"result\":\"已完成\"}")).andExpect(status().isOk());
+        assertEquals(1, data(as(own, get("/api/v1/interventions/" + linked))).path("records").size());
     }
 }

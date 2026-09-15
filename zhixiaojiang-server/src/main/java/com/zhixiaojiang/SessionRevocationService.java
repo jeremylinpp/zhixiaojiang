@@ -38,6 +38,8 @@ public class SessionRevocationService {
   private final boolean enabled;
   private final String prefix;
   private final Map<String, Long> localRevoked = new ConcurrentHashMap<>();
+  /** Redis 故障告警节流，避免每个请求都刷日志。 */
+  private final java.util.concurrent.atomic.AtomicLong lastWarningAt = new java.util.concurrent.atomic.AtomicLong();
 
   public SessionRevocationService(StringRedisTemplate redis, org.springframework.core.env.Environment env) {
     this.redis = redis;
@@ -58,7 +60,7 @@ public class SessionRevocationService {
     try {
       redis.opsForValue().set(key(fingerprint), "1", ttl);
     } catch (RuntimeException e) {
-      log.warn("Redis 写入会话撤销标记失败，该令牌仍会在本实例失效，但多实例部署下其他实例可能继续接受它：{}", e.toString());
+      warnThrottled("Redis 写入会话撤销标记失败，该令牌仍会在本实例失效，但多实例部署下其他实例可能继续接受它：{}", e.toString());
     }
   }
 
@@ -75,9 +77,17 @@ public class SessionRevocationService {
     try {
       return Boolean.TRUE.equals(redis.hasKey(key(fingerprint)));
     } catch (RuntimeException e) {
-      log.warn("Redis 读取会话撤销标记失败，本次只依据本实例内存判断；多实例部署下已被其他实例撤销的会话可能被接受：{}", e.toString());
+      warnThrottled("Redis 读取会话撤销标记失败，本次只依据本实例内存判断；多实例部署下已被其他实例撤销的会话可能被接受：{}", e.toString());
       return false;
     }
+  }
+
+  /** 同一故障在 60 秒内只记录一条 WARN，但仍保留可见性。 */
+  private void warnThrottled(String message, Object detail) {
+    long now = System.currentTimeMillis();
+    long previous = lastWarningAt.get();
+    if (now - previous < 60_000) return;
+    if (lastWarningAt.compareAndSet(previous, now)) log.warn(message, detail);
   }
 
   /** 仅供测试与运维观察当前内存标记数量。 */
