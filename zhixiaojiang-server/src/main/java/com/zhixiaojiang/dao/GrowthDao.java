@@ -20,12 +20,12 @@ public class GrowthDao {
     }
 
     public Map<String, Object> student(long studentId) {
-        return db.queryForMap("select id,name,student_no,status from student where id=?", studentId);
+        return db.queryForObject("select id,name,student_no,status from student where id=?", RowMaps.mapper(), studentId);
     }
 
     /** 周期内四维评价的平均分；缺失维度返回 null。 */
     public Map<String, Object> dimensionAverages(long studentId, LocalDate start, LocalDate end) {
-        return db.queryForMap("select avg(moral_score) moral,avg(skill_score) skill,avg(thinking_score) thinking,avg(smart_score) smart from dimension_evaluation where student_id=? and period_end between ? and ?", studentId, start, end);
+        return db.queryForObject("select avg(moral_score) moral,avg(skill_score) skill,avg(thinking_score) thinking,avg(smart_score) smart from dimension_evaluation where student_id=? and period_end between ? and ?", RowMaps.mapper(), studentId, start, end);
     }
 
     public List<Map<String, Object>> scores(long studentId, LocalDate start, LocalDate end) {

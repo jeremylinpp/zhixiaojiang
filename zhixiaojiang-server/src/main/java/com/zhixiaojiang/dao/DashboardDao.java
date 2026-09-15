@@ -34,7 +34,7 @@ public class DashboardDao {
     }
 
     public Map<String, Object> attendanceSummary(List<Long> classIds, LocalDate date) {
-        return db.queryForMap("select count(*) registered_count, round(100.0*sum(case when ar.status in ('PRESENT','LATE') then 1 else 0 end)/nullif(count(*),0),1) attendance_rate from attendance_record ar join student s on s.id=ar.student_id where s.class_id in " + SqlParams.inClause(classIds) + " and s.status=? and ar.attendance_date=?", SqlParams.append(SqlParams.append(classIds.toArray(), StudentStatus.ACTIVE.name()), date));
+        return db.queryForObject("select count(*) registered_count, round(100.0*sum(case when ar.status in ('PRESENT','LATE') then 1 else 0 end)/nullif(count(*),0),1) attendance_rate from attendance_record ar join student s on s.id=ar.student_id where s.class_id in " + SqlParams.inClause(classIds) + " and s.status=? and ar.attendance_date=?", RowMaps.mapper(), SqlParams.append(SqlParams.append(classIds.toArray(), StudentStatus.ACTIVE.name()), date));
     }
 
     public List<Map<String, Object>> targets(List<Long> classIds) {
