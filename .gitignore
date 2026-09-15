@@ -1,0 +1,14 @@
+# 本机密钥与配置：只保留变量名，不提交密码、模型密钥和 JWT 密钥
+zhixiaojiang-server/config/application-local.yml
+
+# 构建产物
+zhixiaojiang-server/target/
+zhixiaojiang-web/dist/
+zhixiaojiang-web/node_modules/
+*.tsbuildinfo
+
+# 本机工具与编辑器
+.run/
+.idea/
+*.iml
+.DS_Store
