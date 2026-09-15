@@ -14,14 +14,15 @@ import java.util.*;
 @RequestMapping("/api/v1")
 public class PointsController {
   private final JdbcTemplate db;
-  public PointsController(JdbcTemplate db) { this.db = db; }
+  private final TeacherScope scope;
+  public PointsController(JdbcTemplate db, TeacherScope scope) { this.db = db; this.scope = scope; }
   public record Award(@Positive long studentId, Integer amount, Long ruleId,
       @NotBlank @Size(max=160) String reason, @NotBlank @Size(max=100) String idempotencyKey) {}
 
   @GetMapping("/students/{id}/points")
   Map<String,Object> list(@PathVariable long id, @RequestParam(defaultValue="1") int page,
       @RequestParam(defaultValue="20") int pageSize, HttpServletRequest request) {
-    ownStudent(id, request);
+    scope.requireStudent(id, request);
     int size = Math.max(1, Math.min(100, pageSize)), current = Math.max(1,page);
     var items = db.query("select p.id,p.amount,p.category,p.reason,p.created_at,p.idempotency_key,exists(select 1 from point_ledger r where r.idempotency_key=concat('reverse:',p.id)) reversed from point_ledger p where p.student_id=? order by p.id desc limit ? offset ?", (rs,n) -> {
       Map<String,Object> row = new LinkedHashMap<>();
@@ -40,7 +41,7 @@ public class PointsController {
 
   @PostMapping("/points") @Transactional
   Map<String,Object> award(@Valid @RequestBody Award award, HttpServletRequest request) {
-    long teacher = ownStudent(award.studentId(),request);
+    long teacher = scope.requireStudent(award.studentId(),request);
     Integer amount = award.amount();
     String category = "MANUAL";
     if (award.ruleId() != null) {
@@ -65,7 +66,7 @@ public class PointsController {
     var matches = db.queryForList("select student_id,amount,category,reason from point_ledger where id=?",id);
     if(matches.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"积分记录不存在");
     var original = matches.get(0);
-    long teacher = ownStudent(((Number)original.get("student_id")).longValue(),request);
+    long teacher = scope.requireStudent(((Number)original.get("student_id")).longValue(),request);
     if ("REVERSAL".equals(original.get("category"))) throw new ResponseStatusException(HttpStatus.CONFLICT,"反向流水不能再次撤销，请新建纠错记录");
     String reason = "撤销："+original.get("reason");
     int changed = db.update("insert ignore into point_ledger(student_id,amount,category,reason,idempotency_key,created_by) values(?,?,'REVERSAL',?,?,?)",original.get("student_id"),-((Number)original.get("amount")).intValue(),reason.substring(0,Math.min(160,reason.length())),"reverse:"+id,teacher);
@@ -73,14 +74,6 @@ public class PointsController {
     return ok(Map.of("saved",changed==1));
   }
 
-  private long ownStudent(long id,HttpServletRequest request) {
-    Object actor = request.getAttribute("userId");
-    if(actor==null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"请先登录");
-    long teacher = Long.parseLong(actor.toString());
-    if(db.queryForObject("select count(*) from student s join class_room c on c.id=s.class_id where s.id=? and c.teacher_id=?",Integer.class,id,teacher)==0)
-      throw new ResponseStatusException(HttpStatus.NOT_FOUND,"学生不存在或不属于当前教师");
-    return teacher;
-  }
   private void audit(long actor,String action,long id,String summary) {
     db.update("insert into audit_log(actor_id,action,entity_type,entity_id,summary) values(?,?,'point_ledger',?,?)",actor,action,id,summary);
   }

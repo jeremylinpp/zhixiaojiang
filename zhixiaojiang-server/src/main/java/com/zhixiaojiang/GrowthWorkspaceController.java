@@ -17,7 +17,8 @@ import java.util.*;
 @RestController @RequestMapping("/api/v1/students/{studentId}")
 public class GrowthWorkspaceController {
     private final JdbcTemplate db;
-    public GrowthWorkspaceController(JdbcTemplate db) { this.db = db; }
+    private final TeacherScope scope;
+    public GrowthWorkspaceController(JdbcTemplate db, TeacherScope scope) { this.db = db; this.scope = scope; }
     public record Exam(@NotBlank @Size(max=40) String subject,
                        @NotBlank @Size(max=120) String examName,
                        @NotNull @DecimalMin("0") @DecimalMax("9999.99") BigDecimal score,
@@ -47,7 +48,7 @@ public class GrowthWorkspaceController {
                                @RequestParam(required=false) LocalDate from,
                                @RequestParam(required=false) LocalDate to,
                                HttpServletRequest request) {
-        ownStudent(studentId, request, false);
+        scope.requireStudent(studentId, request, false);
         LocalDate end = to == null ? LocalDate.now() : to;
         LocalDate start = from == null ? end.withDayOfYear(1) : from;
         if (start.isAfter(end)) throw bad("开始日期不能晚于结束日期");
@@ -74,7 +75,7 @@ public class GrowthWorkspaceController {
 
     @PostMapping("/scores") @Transactional
     Map<String,Object> createExam(@PathVariable long studentId,@Valid @RequestBody Exam exam,HttpServletRequest request) {
-        long actor=ownStudent(studentId,request,true);
+        long actor=scope.requireStudent(studentId,request,true);
         if(exam.score().compareTo(exam.fullScore())>0) throw bad("成绩不能超过满分");
         if(db.queryForObject("select count(*) from score_record where student_id=? and subject=? and exam_name=?",Integer.class,studentId,exam.subject().trim(),exam.examName().trim())>0)
             throw new ResponseStatusException(HttpStatus.CONFLICT,"该学生已有同科目、同考试批次成绩，请勿重复录入");
@@ -84,7 +85,7 @@ public class GrowthWorkspaceController {
 
     @PostMapping("/attendance") @Transactional
     Map<String,Object> attendance(@PathVariable long studentId,@Valid @RequestBody Attendance attendance,HttpServletRequest request) {
-        long actor=ownStudent(studentId,request,true);
+        long actor=scope.requireStudent(studentId,request,true);
         var existing=db.queryForList("select id from attendance_record where student_id=? and attendance_date=?",Long.class,studentId,attendance.attendanceDate());
         long id;
         if(existing.isEmpty()) id=insert("insert into attendance_record(student_id,attendance_date,status,note,created_by) values(?,?,?,?,?)",studentId,attendance.attendanceDate(),attendance.status(),attendance.note(),actor);
@@ -93,20 +94,20 @@ public class GrowthWorkspaceController {
     }
     @PostMapping("/skills") @Transactional
     Map<String,Object> skill(@PathVariable long studentId,@Valid @RequestBody Skill skill,HttpServletRequest request) {
-        long actor=ownStudent(studentId,request,true);
+        long actor=scope.requireStudent(studentId,request,true);
         long id=insert("insert into skill_record(student_id,skill_name,score,level,occurred_on,evidence,created_by) values(?,?,?,?,?,?,?)",studentId,skill.skillName().trim(),skill.score(),skill.level(),skill.occurredOn(),skill.evidence().trim(),actor);
         audit(actor,"skill_record",id,"教师录入技能记录");return ok(Map.of("id",id));
     }
     @PostMapping("/growth") @Transactional
     Map<String,Object> growth(@PathVariable long studentId,@Valid @RequestBody Growth growth,HttpServletRequest request) {
-        long actor=ownStudent(studentId,request,true);
+        long actor=scope.requireStudent(studentId,request,true);
         long id=insert("insert into growth_record(student_id,dimension,score,title,detail,occurred_on,source,created_by) values(?,?,?,?,?,?,?,?)",studentId,growth.dimension(),growth.score(),growth.title().trim(),growth.detail(),growth.occurredOn(),growth.source().trim(),actor);
         audit(actor,"growth_record",id,"教师录入成长记录");return ok(Map.of("id",id));
     }
 
     @PostMapping("/evaluations") @Transactional
     Map<String,Object> createEvaluation(@PathVariable long studentId,@Valid @RequestBody Evaluation evaluation,HttpServletRequest request) {
-        long actor=ownStudent(studentId,request,true);
+        long actor=scope.requireStudent(studentId,request,true);
         if(evaluation.periodStart().isAfter(evaluation.periodEnd())) throw bad("评价周期开始日期不能晚于结束日期");
         if(evaluation.moralScore()==null && evaluation.skillScore()==null && evaluation.thinkingScore()==null && evaluation.smartScore()==null) throw bad("请至少填写一个维度的评价分数");
         long id=insert("insert into dimension_evaluation(student_id,period_start,period_end,moral_score,skill_score,thinking_score,smart_score,evidence,created_by) values(?,?,?,?,?,?,?,?,?)",studentId,evaluation.periodStart(),evaluation.periodEnd(),evaluation.moralScore(),evaluation.skillScore(),evaluation.thinkingScore(),evaluation.smartScore(),evaluation.evidence().trim(),actor);
@@ -126,14 +127,6 @@ public class GrowthWorkspaceController {
             }
             return row;
         },args);
-    }
-    private long ownStudent(long id,HttpServletRequest request,boolean lock) {
-        Object actor=request.getAttribute("userId");
-        if(actor==null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"请先登录");
-        long teacher=Long.parseLong(actor.toString());
-        var matches=db.queryForList("select s.id from student s join class_room c on c.id=s.class_id where s.id=? and c.teacher_id=?"+(lock?" for update":""),id,teacher);
-        if(matches.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"学生不存在或不属于当前教师");
-        return teacher;
     }
     private long insert(String sql,Object... values) {
         var keys=new GeneratedKeyHolder();
