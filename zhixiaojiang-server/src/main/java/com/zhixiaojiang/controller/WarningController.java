@@ -79,7 +79,7 @@ public class WarningController {
     Map<String, Object> analyze(HttpServletRequest req) {
         int created = 0;
         LocalDate today = LocalDate.now(), since = today.minusDays(13), priorSince = today.minusDays(27);
-        for (Map<String, Object> s : db.queryForList("select s.id from student s join class_room c on c.id=s.class_id where c.teacher_id=? and s.status=?", scope.teacher(req), StudentStatus.ACTIVE.name())) {
+        for (Map<String, Object> s : db.queryForList("select s.id from student s join class_room c on c.id=s.class_id where c.teacher_id=? and s.status=?", scope.teacher(), StudentStatus.ACTIVE.name())) {
             long sid = ((Number) s.get("id")).longValue();
             List<Map<String, Object>> scores = db.queryForList("select score/full_score ratio,score from score_record where student_id=? and subject='数学' order by occurred_on desc limit 4", sid);
             boolean decline = scores.size() >= 4 && ((Number) scores.get(3).get("ratio")).doubleValue() > ((Number) scores.get(2).get("ratio")).doubleValue() && ((Number) scores.get(2).get("ratio")).doubleValue() > ((Number) scores.get(1).get("ratio")).doubleValue() && ((Number) scores.get(1).get("ratio")).doubleValue() > ((Number) scores.get(0).get("ratio")).doubleValue();
@@ -102,7 +102,7 @@ public class WarningController {
                 created += db.update("insert ignore into warning_record(student_id,level,rule_code,summary,evidence_json,status) values(?,?,?,?,?,?)", sid, WarningLevel.ATTENTION.name(), WarningRule.ACTIVITY_DROP.name(), "最近14天活动参与较前14天下降至少一半", JsonValues.toJson(List.of("前期=" + priorActivity, "近期=" + recentActivity)), WarningStatus.OPEN.name());
             }
         }
-        audit.record(req, "ANALYZE", "warning_record", 0, "执行规则预警分析");
+        audit.record("ANALYZE", "warning_record", 0, "执行规则预警分析");
         return ApiResult.ok(Map.of("source", "TEMPLATE", "message", "已按规则完成趋势筛查", "created", created, "disclaimer", "AI辅助建议，仅供教师参考"));
     }
 

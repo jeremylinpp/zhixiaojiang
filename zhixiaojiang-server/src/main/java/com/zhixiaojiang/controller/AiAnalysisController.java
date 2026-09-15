@@ -40,7 +40,7 @@ public class AiAnalysisController {
     @PostMapping("/ai/student-analysis")
     Map<String, Object> ai(@RequestBody Map<String, Object> body, HttpServletRequest req) {
         long studentId = body.get("studentId") instanceof Number n ? n.longValue() : 0;
-        if (studentId > 0) scope.requireStudent(studentId, req);
+        if (studentId > 0) scope.requireStudent(studentId);
         Map<String, Object> result = templateAi();
         if (!aiBaseUrl.isBlank() && !aiModel.isBlank() && !aiApiKey.isBlank()) {
             try {
@@ -63,7 +63,7 @@ public class AiAnalysisController {
         }
         try {
             if (studentId > 0)
-                db.update("insert into ai_analysis(student_id,source,request_json,response_json,created_by) values(?,?,?,?,?)", studentId, String.valueOf(result.get("source")), JsonValues.toJson(Map.of("whitelist", "scores,attendance,behavior,skills,tasks")), JsonValues.toJson(result), scope.teacher(req));
+                db.update("insert into ai_analysis(student_id,source,request_json,response_json,created_by) values(?,?,?,?,?)", studentId, String.valueOf(result.get("source")), JsonValues.toJson(Map.of("whitelist", "scores,attendance,behavior,skills,tasks")), JsonValues.toJson(result), scope.teacher());
         } catch (Exception ignored) {
         }
         return ApiResult.ok(result);

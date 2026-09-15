@@ -35,7 +35,7 @@ public class StudentController {
     @GetMapping("/students")
     Map<String, Object> students(@RequestParam(defaultValue = "") String q, @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "20") int pageSize, HttpServletRequest req) {
         int safePage = Math.max(1, page), safeSize = Math.min(100, Math.max(1, pageSize));
-        var classIds = scope.classIds(req);
+        var classIds = scope.classIds();
         if (classIds.isEmpty()) return ApiResult.ok(Map.of("items", List.of(), "page", safePage, "pageSize", safeSize, "total", 0));
         Object[] ids = classIds.toArray();
         String in = SqlParams.inClause(classIds);
@@ -47,80 +47,80 @@ public class StudentController {
 
     @GetMapping("/students/{id}")
     Map<String, Object> student(@PathVariable long id, HttpServletRequest req) {
-        scope.requireStudent(id, req);
+        scope.requireStudent(id);
         var s = db.queryForMap("select id,student_no as studentNo,name,gender,status from student where id=?", id);
         return ApiResult.ok(Map.of("student", s, "growth", db.queryForList("select dimension,round(avg(score),1) score from growth_record where student_id=? group by dimension", id), "scores", db.queryForList("select subject,exam_name examName,score,full_score fullScore,occurred_on occurredOn from score_record where student_id=? order by occurred_on", id), "timeline", db.queryForList("select title,detail,occurred_on occurredOn,source from growth_record where student_id=? order by occurred_on desc", id)));
     }
 
     @GetMapping("/students/{id}/portrait")
     Map<String, Object> portrait(@PathVariable long id, HttpServletRequest req) {
-        scope.requireStudent(id, req);
+        scope.requireStudent(id);
         return ApiResult.ok(Map.of("studentId", id, "dimensions", db.queryForList("select dimension,round(avg(score),1) score from growth_record where student_id=? group by dimension", id)));
     }
 
     @GetMapping("/students/{id}/timeline")
     Map<String, Object> timeline(@PathVariable long id, HttpServletRequest req) {
-        scope.requireStudent(id, req);
+        scope.requireStudent(id);
         return ApiResult.ok(Map.of("items", db.queryForList("select title,detail,occurred_on occurredOn,source,created_by createdBy from growth_record where student_id=? order by occurred_on desc", id)));
     }
 
     @GetMapping("/students/{id}/attendance")
     Map<String, Object> attendance(@PathVariable long id, HttpServletRequest req) {
-        scope.requireStudent(id, req);
+        scope.requireStudent(id);
         return ApiResult.ok(Map.of("items", db.queryForList("select id,attendance_date attendanceDate,status,note,created_by createdBy from attendance_record where student_id=? order by attendance_date desc", id)));
     }
 
     @GetMapping("/students/{id}/behavior")
     Map<String, Object> behavior(@PathVariable long id, HttpServletRequest req) {
-        scope.requireStudent(id, req);
+        scope.requireStudent(id);
         return ApiResult.ok(Map.of("items", db.queryForList("select id,category,score,occurred_on occurredOn,detail,created_by createdBy from behavior_record where student_id=? order by occurred_on desc", id)));
     }
 
     @PostMapping("/students/{id}/behavior")
     Map<String, Object> recordBehavior(@PathVariable long id, @RequestBody Map<String, Object> b, HttpServletRequest req) {
-        scope.requireStudent(id, req);
-        long rid = JdbcInsert.returningId(db, "insert into behavior_record(student_id,category,score,occurred_on,detail,created_by) values(?,?,?,?,?,?)", id, RequestValues.text(b, "category", "日常表现"), RequestValues.decimalOrNull(b.get("score")), RequestValues.date(b.get("occurredOn")), b.get("detail"), scope.teacher(req));
-        audit.record(req, "CREATE", "behavior_record", rid, "记录学生行为表现");
+        scope.requireStudent(id);
+        long rid = JdbcInsert.returningId(db, "insert into behavior_record(student_id,category,score,occurred_on,detail,created_by) values(?,?,?,?,?,?)", id, RequestValues.text(b, "category", "日常表现"), RequestValues.decimalOrNull(b.get("score")), RequestValues.date(b.get("occurredOn")), b.get("detail"), scope.teacher());
+        audit.record("CREATE", "behavior_record", rid, "记录学生行为表现");
         return ApiResult.ok(Map.of("id", rid));
     }
 
     @GetMapping("/students/{id}/skills")
     Map<String, Object> skills(@PathVariable long id, HttpServletRequest req) {
-        scope.requireStudent(id, req);
+        scope.requireStudent(id);
         return ApiResult.ok(Map.of("items", db.queryForList("select id,skill_name skillName,score,level,occurred_on occurredOn,evidence,created_by createdBy from skill_record where student_id=? order by occurred_on desc", id)));
     }
 
     @GetMapping("/students/{id}/evaluations")
     Map<String, Object> evaluations(@PathVariable long id, HttpServletRequest req) {
-        scope.requireStudent(id, req);
+        scope.requireStudent(id);
         return ApiResult.ok(Map.of("items", db.queryForList("select id,period_start periodStart,period_end periodEnd,moral_score moralScore,skill_score skillScore,thinking_score thinkingScore,smart_score smartScore,evidence,created_by createdBy from dimension_evaluation where student_id=? order by period_end desc", id)));
     }
 
     @PostMapping("/students")
     @Transactional
     Map<String, Object> createStudent(@Valid @RequestBody StudentInput b, HttpServletRequest req) {
-        long classId = b.classId() == null ? scope.defaultClass(req) : b.classId();
-        scope.requireClass(classId, req);
+        long classId = b.classId() == null ? scope.defaultClass() : b.classId();
+        scope.requireClass(classId);
         long id = JdbcInsert.returningId(db, "insert into student(class_id,student_no,name,gender,status) values(?,?,?,?,?)", classId, b.studentNo().trim(), b.name().trim(), b.gender(), StudentStatus.ACTIVE.name());
-        audit.record(req, "CREATE", "student", id, "新增学生档案");
+        audit.record("CREATE", "student", id, "新增学生档案");
         return ApiResult.ok(Map.of("id", id));
     }
 
     @PutMapping("/students/{id}")
     @Transactional
     Map<String, Object> updateStudent(@PathVariable long id, @Valid @RequestBody StudentInput b, HttpServletRequest req) {
-        scope.requireStudent(id, req);
+        scope.requireStudent(id);
         db.update("update student set name=?,gender=?,student_no=? where id=?", b.name().trim(), b.gender(), b.studentNo().trim(), id);
-        audit.record(req, "UPDATE", "student", id, "更新学生档案");
+        audit.record("UPDATE", "student", id, "更新学生档案");
         return ApiResult.ok(Map.of("saved", true));
     }
 
     @PostMapping("/students/{id}/archive")
     @Transactional
     Map<String, Object> archiveStudent(@PathVariable long id, HttpServletRequest req) {
-        scope.requireStudent(id, req);
+        scope.requireStudent(id);
         db.update("update student set status=?,archived_at=now() where id=?", StudentStatus.ARCHIVED.name(), id);
-        audit.record(req, "ARCHIVE", "student", id, "归档学生档案");
+        audit.record("ARCHIVE", "student", id, "归档学生档案");
         return ApiResult.ok(Map.of("saved", true));
     }
 

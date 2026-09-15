@@ -29,7 +29,7 @@ public class PointsController {
   @GetMapping("/students/{id}/points")
   Map<String,Object> list(@PathVariable long id, @RequestParam(defaultValue="1") int page,
       @RequestParam(defaultValue="20") int pageSize, HttpServletRequest request) {
-    scope.requireStudent(id, request);
+    scope.requireStudent(id);
     int size = Math.max(1, Math.min(100, pageSize)), current = Math.max(1,page);
     var items = db.query("select p.id,p.amount,p.category,p.reason,p.created_at,p.idempotency_key,exists(select 1 from point_ledger r where r.idempotency_key=concat('reverse:',p.id)) reversed from point_ledger p where p.student_id=? order by p.id desc limit ? offset ?", (rs,n) -> {
       Map<String,Object> row = new LinkedHashMap<>();
@@ -48,7 +48,7 @@ public class PointsController {
 
   @PostMapping("/points") @Transactional
   Map<String,Object> award(@Valid @RequestBody Award award, HttpServletRequest request) {
-    long teacher = scope.requireStudent(award.studentId(),request);
+    long teacher = scope.requireStudent(award.studentId());
     Integer amount = award.amount();
     PointCategory category = PointCategory.MANUAL;
     if (award.ruleId() != null) {
@@ -73,7 +73,7 @@ public class PointsController {
     var matches = db.queryForList("select student_id,amount,category,reason from point_ledger where id=?",id);
     if(matches.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"积分记录不存在");
     var original = matches.get(0);
-    long teacher = scope.requireStudent(((Number)original.get("student_id")).longValue(),request);
+    long teacher = scope.requireStudent(((Number)original.get("student_id")).longValue());
     if (PointCategory.REVERSAL.name().equals(original.get("category"))) throw new ResponseStatusException(HttpStatus.CONFLICT,"反向流水不能再次撤销，请新建纠错记录");
     String reason = "撤销："+original.get("reason");
     int changed = db.update("insert ignore into point_ledger(student_id,amount,category,reason,idempotency_key,created_by) values(?,?,?,?,?,?)",original.get("student_id"),-((Number)original.get("amount")).intValue(),PointCategory.REVERSAL.name(),reason.substring(0,Math.min(160,reason.length())),"reverse:"+id,teacher);
@@ -89,8 +89,8 @@ public class PointsController {
 
     @PostMapping("/point-rules")
     Map<String, Object> createPointRule(@RequestBody Map<String, Object> b, HttpServletRequest req) {
-        long id = JdbcInsert.returningId(db, "insert into point_rule(name,category,amount,enabled,description,created_by) values(?,?,?,?,?,?)", RequestValues.text(b, "name", "新积分规则"), RequestValues.text(b, "category", "MANUAL"), RequestValues.intValue(b.get("amount")), b.getOrDefault("enabled", true), b.get("description"), scope.teacher(req));
-        audit.record(req, "CREATE", "point_rule", id, "创建积分规则");
+        long id = JdbcInsert.returningId(db, "insert into point_rule(name,category,amount,enabled,description,created_by) values(?,?,?,?,?,?)", RequestValues.text(b, "name", "新积分规则"), RequestValues.text(b, "category", "MANUAL"), RequestValues.intValue(b.get("amount")), b.getOrDefault("enabled", true), b.get("description"), scope.teacher());
+        audit.record("CREATE", "point_rule", id, "创建积分规则");
         return ApiResult.ok(Map.of("id", id));
     }
 
