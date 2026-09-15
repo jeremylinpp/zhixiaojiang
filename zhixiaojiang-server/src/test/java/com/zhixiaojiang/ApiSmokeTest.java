@@ -55,7 +55,17 @@ class ApiSmokeTest {
     var assigned = http.perform(get("/api/v1/growth-tasks/"+taskId+"/students").cookie(session)).andExpect(status().isOk()).andReturn();
     long studentTaskId = json.readTree(assigned.getResponse().getContentAsString()).path("data").path("items").get(0).path("id").asLong();
     http.perform(secure(post("/api/v1/student-tasks/"+studentTaskId+"/complete"),session,csrfCookie,csrfToken).contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isOk());
-    http.perform(secure(post("/api/v1/class-diagnoses"),session,csrfCookie,csrfToken).contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"smoke target\",\"targetValue\":90,\"currentValue\":80}")).andExpect(status().isOk());
+    var diagnosisResponse = http.perform(secure(post("/api/v1/class-diagnoses"),session,csrfCookie,csrfToken).contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"smoke target\",\"targetValue\":90,\"currentValue\":80}")).andExpect(status().isOk()).andReturn();
+    long diagnosisId = json.readTree(diagnosisResponse.getResponse().getContentAsByteArray()).path("data").path("id").asLong();
+    // 班级诊改页：记录改进措施与复评
+    http.perform(secure(post("/api/v1/class-diagnoses/"+diagnosisId+"/records"),session,csrfCookie,csrfToken).contentType(MediaType.APPLICATION_JSON).content("{\"measure\":\"smoke measure\",\"reviewResult\":\"待观察\"}")).andExpect(status().isOk());
+    var diagnosisRecords = http.perform(get("/api/v1/class-diagnoses/"+diagnosisId+"/records").cookie(session)).andExpect(status().isOk()).andReturn();
+    assertEquals("smoke measure", json.readTree(diagnosisRecords.getResponse().getContentAsByteArray()).path("data").path("items").get(0).path("measure").asText());
+    http.perform(secure(post("/api/v1/class-diagnoses/"+diagnosisId+"/review"),session,csrfCookie,csrfToken).contentType(MediaType.APPLICATION_JSON).content("{\"currentValue\":85}")).andExpect(status().isOk());
+    // 六机任务页：记录任务评价（不改状态）
+    http.perform(secure(post("/api/v1/student-tasks/"+studentTaskId+"/evaluate"),session,csrfCookie,csrfToken).contentType(MediaType.APPLICATION_JSON).content("{\"note\":\"smoke evaluate\"}")).andExpect(status().isOk());
+    var taskStudents = http.perform(get("/api/v1/growth-tasks/"+taskId+"/students").cookie(session)).andExpect(status().isOk()).andReturn();
+    assertEquals("smoke evaluate", json.readTree(taskStudents.getResponse().getContentAsByteArray()).path("data").path("items").get(0).path("teacherNote").asText());
     var chinese = http.perform(get("/api/v1/students").param("q","小智").cookie(session)).andExpect(status().isOk()).andReturn();
     assertEquals("小智", json.readTree(chinese.getResponse().getContentAsByteArray()).path("data").path("items").get(0).path("name").asText());
     String studentBody = "{\"name\":\"中文验证学生\",\"studentNo\":\"UTF8-TEST\",\"gender\":\"女\"}";

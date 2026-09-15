@@ -6,6 +6,8 @@ import TeacherProfile from './components/TeacherProfile.vue';
 import GrowthPage from './components/GrowthPage.vue';
 import WarningsPage from './components/WarningsPage.vue';
 import InterventionPage from './components/InterventionPage.vue';
+import TasksPage from './components/TasksPage.vue';
+import DiagnosisPage from './components/DiagnosisPage.vue';
 import { computed, ref, nextTick, onMounted, onUnmounted, watch } from 'vue';
 import { PanelLeft, Search, Bell, Languages, Palette, FlaskConical, Activity, LayoutDashboard, Radar, KeyRound, FileText, ListTodo, Wallet, MessagesSquare, UserRound, ArrowRight, ChevronUp, ChevronDown, Check, Circle, CreditCard, SquareTerminal, RadioTower, ShieldCheck, Timer, BookOpen, Flame, TrendingUp, X, UsersRound, GraduationCap, Coins, Target, ClipboardCheck, Sparkles } from 'lucide-vue-next';
 
@@ -32,7 +34,11 @@ const liveError = ref('');
 const dashboard = ref<{metrics?:{studentCount?:number;activeRate?:number|null;attendanceCompleteness?:number;attendanceDate?:string|null};targets?:Array<{name:string;currentValue:number;targetValue:number}>}>({});
 const pageRows = ref<Record<string, string[][]>>({});
 const query = ref('');
-const businessPages = ['概览','学生档案','成长画像','机智币','智能预警','一人一策','六机任务','班级诊改','智小匠助手','教师资料'];
+/** 已有独立业务组件的页面：不再走通用演示表格分支。 */
+const DEDICATED_PAGES = ['概览','学生档案','成长画像','机智币','智能预警','一人一策','六机任务','班级诊改','教师资料'];
+/** 仅保留演示兜底的页面：尚未接入真实业务的入口。 */
+const GENERIC_TABLE_PAGES = ['智小匠助手'];
+const businessPages = [...DEDICATED_PAGES, ...GENERIC_TABLE_PAGES];
 const initialPage = new URLSearchParams(location.search).get('page') || '概览';
 const active = ref(businessPages.includes(initialPage) ? initialPage : '概览');
 const dialog = ref<HTMLDialogElement>();
@@ -85,7 +91,7 @@ async function apiGet(path: string) { const res = await fetch(`${apiBase}${path}
 async function loadCsrf() { try { const d = await apiGet('/auth/csrf'); csrfToken.value = d.token || ''; } catch { /* backend may be offline while the visual preview is used */ } }
 async function loadPage() {
   const requestedPage = active.value;
-  if (!school.value || ['概览','学生档案','成长画像','机智币','教师资料','智能预警','一人一策'].includes(requestedPage)) return;
+  if (!school.value || !GENERIC_TABLE_PAGES.includes(requestedPage)) return;
   try {
     if (requestedPage === '学生档案') { const d = await apiGet('/students?page=1&pageSize=50'); pageRows.value[requestedPage] = (d.items || []).map((x:any) => [x.name, String(x.growthIndex ?? '—'), '成长档案已建立', x.status === 'ACTIVE' ? '正常' : '已归档']); }
     if (requestedPage === '成长画像') { const d = await apiGet('/students/1'); const values = Object.fromEntries((d.growth || []).map((x:any) => [x.dimension, x.score])); pageRows.value[requestedPage] = [['小智',String(values.MORAL ?? '—'),String(values.SKILL ?? '—'),String(values.THINKING ?? '—'),String(values.SMART ?? '—')]]; }
@@ -198,6 +204,8 @@ onUnmounted(() => document.removeEventListener('keydown', keys));
       <GrowthPage v-else-if="school && active === '成长画像'" />
       <WarningsPage v-else-if="school && active === '智能预警'" />
       <InterventionPage v-else-if="school && active === '一人一策'" />
+      <TasksPage v-else-if="school && active === '六机任务'" />
+      <DiagnosisPage v-else-if="school && active === '班级诊改'" />
       <div v-else class="page-scroll workspace-page">
         <div class="workspace-heading"><div><p class="eyebrow"><Sparkles/>班主任工作台</p><h1>{{ pageInfo[active]?.[0] || active }}</h1><p>{{ pageInfo[active]?.[1] || '持续记录学生成长，保持班级运行可见。' }}</p></div><button class="button primary" @click="pageAction(active)"><Sparkles/>{{ active === '智能预警' ? '执行规则分析' : active === '学生档案' ? '新增学生' : active === '一人一策' ? '生成帮扶方案' : active === '机智币' ? '新增积分记录' : active === '六机任务' ? '发布成长任务' : active === '班级诊改' ? '新增诊改目标' : '新增记录' }}</button></div>
         <div class="workspace-toolbar"><label class="inline-search"><Search/><input v-model="pageSearch" placeholder="搜索当前页面"/><kbd>⌘ K</kbd></label><span class="result-count">{{ rowsForActive.length }} 条记录 · {{ live ? '已连接 Oracle' : '演示数据' }}</span></div>
