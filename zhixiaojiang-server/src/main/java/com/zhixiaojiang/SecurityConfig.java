@@ -51,7 +51,8 @@ public class SecurityConfig {
 
     static String token(long userId, String username, String role, String secret) {
         String h = Base64.getUrlEncoder().withoutPadding().encodeToString("{\"alg\":\"HS256\",\"typ\":\"JWT\"}".getBytes(StandardCharsets.UTF_8));
-        String p = Base64.getUrlEncoder().withoutPadding().encodeToString(("{\"sub\":\"" + userId + "\",\"username\":\"" + username + "\",\"role\":\"" + role + "\",\"exp\":" + (Instant.now().getEpochSecond() + 28800) + "}").getBytes(StandardCharsets.UTF_8));
+        // jti 保证每次登录的令牌都不同：否则同一秒内退出后再登录会生成与已撤销令牌完全相同的字符串。
+        String p = Base64.getUrlEncoder().withoutPadding().encodeToString(("{\"jti\":\"" + java.util.UUID.randomUUID() + "\",\"sub\":\"" + userId + "\",\"username\":\"" + username + "\",\"role\":\"" + role + "\",\"exp\":" + (Instant.now().getEpochSecond() + 28800) + "}").getBytes(StandardCharsets.UTF_8));
         return h + "." + p + "." + sign(h + "." + p, secret);
     }
 

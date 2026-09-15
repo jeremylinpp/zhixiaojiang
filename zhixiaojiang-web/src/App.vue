@@ -7,7 +7,9 @@ import GrowthPage from './components/GrowthPage.vue';
 import { computed, ref, nextTick, onMounted, onUnmounted, watch } from 'vue';
 import { PanelLeft, Search, Bell, Languages, Palette, FlaskConical, Activity, LayoutDashboard, Radar, KeyRound, FileText, ListTodo, Wallet, MessagesSquare, UserRound, ArrowRight, ChevronUp, ChevronDown, Check, Circle, CreditCard, SquareTerminal, RadioTower, ShieldCheck, Timer, BookOpen, Flame, TrendingUp, X, UsersRound, GraduationCap, Coins, Target, ClipboardCheck, Sparkles } from 'lucide-vue-next';
 
-const school = ref(!import.meta.env.DEV || new URLSearchParams(location.search).get('view') !== 'reference');
+/** 参考控制台对照视图只在本地开发可用；生产构建固定进入智小匠业务视图。 */
+const referenceAvailable = import.meta.env.DEV;
+const school = ref(!referenceAvailable || new URLSearchParams(location.search).get('view') !== 'reference');
 const loginPage = ref(location.pathname === '/login');
 const username = ref('teacher');
 const password = ref('password');
@@ -34,26 +36,26 @@ const active = ref(businessPages.includes(initialPage) ? initialPage : '概览')
 const dialog = ref<HTMLDialogElement>();
 const t = (reference: string, adapted: string) => school.value ? adapted : reference;
 const groups = computed(() => [
-  { label: t('聊天', '育人助手'), items: [{ label: t('游乐场', '智小匠助手'), icon: FlaskConical }] },
+  { label: t('聊天', '育人助手'), items: [{ label: t('调试台', '智小匠助手'), icon: FlaskConical }] },
   { label: t('常规', '班级治理'), items: [
     { label: '概览', icon: Activity }, { label: t('数据看板', '学生档案'), icon: LayoutDashboard },
-    { label: t('模型状态', '成长画像'), icon: Radar }, { label: t('API 密钥', '机智币'), icon: school.value ? Coins : KeyRound },
+    { label: t('模型状态', '成长画像'), icon: Radar }, { label: t('访问密钥', '机智币'), icon: school.value ? Coins : KeyRound },
     { label: t('使用日志', '智能预警'), icon: FileText }, { label: t('任务日志', '六机任务'), icon: ListTodo },
   ] },
   { label: t('个人', '持续诊改'), items: [
-    { label: t('钱包', '一人一策'), icon: school.value ? GraduationCap : Wallet },
+    { label: t('计费中心', '一人一策'), icon: school.value ? GraduationCap : Wallet },
     { label: t('我的工单', '班级诊改'), icon: MessagesSquare }, { label: t('个人资料', '教师资料'), icon: UserRound },
   ] },
 ]);
 const steps = computed(() => [
-  { title: t('创建 API 密钥', '查看成长数据'), text: t('为你的应用或服务创建密钥', '汇集学业、行为与技能成长记录'), icon: school.value ? UsersRound : KeyRound, complete: false },
+  { title: t('创建访问密钥', '查看成长数据'), text: t('为你的应用或服务创建密钥', '汇集学业、行为与技能成长记录'), icon: school.value ? UsersRound : KeyRound, complete: false },
   { title: t('添加额度', '开展辅助研判'), text: t('生产流量前保持充足余额', '结合数据趋势，了解学生近期状态'), icon: school.value ? Radar : CreditCard, complete: true },
   { title: t('发送请求', '制定帮扶计划'), text: t('使用 Playground 或你的客户端验证路由', '教师确认后实施，持续跟踪成长变化'), icon: school.value ? ClipboardCheck : SquareTerminal, complete: false },
 ]);
 const actions = computed(() => [
-  { title: t('API 密钥', '智能预警'), description: t('为你的应用或服务创建密钥', '查看成长趋势与待关注事项'), icon: school.value ? Radar : KeyRound },
+  { title: t('访问密钥', '智能预警'), description: t('为你的应用或服务创建密钥', '查看成长趋势与待关注事项'), icon: school.value ? Radar : KeyRound },
   { title: t('使用日志', '一人一策'), description: t('查看请求、错误和计费详情', '审核帮扶建议，记录实施过程'), icon: FileText },
-  { title: t('定价', '六机任务'), description: t('扩展流量前查看模型费率', '查看活动安排与学生完成情况'), icon: BookOpen },
+  { title: t('方案与计费', '六机任务'), description: t('扩展流量前查看模型费率', '查看活动安排与学生完成情况'), icon: BookOpen },
 ]);
 const stats = computed(() => [
   { label: t('近 24 小时消耗', '班级人数'), value: t('$0', String(dashboard.value.metrics?.studentCount ?? 42)), description: t('近 24 小时消耗量 (USD)', '2025 级工业机器人应用与维护班'), icon: school.value ? UsersRound : Flame, tone: 'orange' },
@@ -94,7 +96,7 @@ async function loadPage() {
 async function runWarningAnalysis() { try { if (!csrfToken.value) await loadCsrf(); const res = await fetch(`${apiBase}/warnings/analyze`, { method: 'POST', credentials: 'include', headers: csrfToken.value ? {'X-CSRF-TOKEN': csrfToken.value} : {} }); if (!res.ok) throw new Error(); const body = await res.json(); await loadPage(); panel.value = `规则分析完成 · ${body.data?.created ?? 0} 条新增`; await nextTick(); dialog.value?.showModal(); } catch { panel.value = '规则分析暂不可用'; await nextTick(); dialog.value?.showModal(); } }
 async function saveAction() { actionBusy.value = true; actionError.value = ''; try { if (!csrfToken.value) await loadCsrf(); const headers: Record<string,string> = {'Content-Type':'application/json'}; if (csrfToken.value) headers['X-CSRF-TOKEN'] = csrfToken.value; let path = ''; let body: Record<string,unknown> = {}; if (panel.value === '新增学生') { path='/students'; body={name:formTitle.value||'未命名学生',gender:formNote.value||undefined}; } else if (panel.value === '新增积分记录') { path='/points'; body={studentId:1,amount:Number(formAmount.value),category:'MANUAL',reason:formNote.value||'教师手工调整',idempotencyKey:`web-${Date.now()}`}; } else if (panel.value === '发布成长任务') { path='/growth-tasks'; body={module:'聚机力',title:formTitle.value||'班级成长任务',description:formNote.value,dueOn:formDate.value||undefined,pointReward:Number(formAmount.value)}; } else if (panel.value === '新增诊改目标') { path='/class-diagnoses'; body={name:formTitle.value||'班级成长目标',targetValue:Number(formAmount.value),currentValue:0,unit:'%'}; } else if (panel.value === '生成帮扶方案') { path='/interventions'; body={studentId:1,title:formTitle.value||'阶段成长支持方案',teacherNote:formNote.value}; } else { path='/students/1/growth'; body={dimension:'SMART',score:Number(formAmount.value),title:formTitle.value||'教师成长记录',detail:formNote.value,occurredOn:formDate.value||undefined,source:'教师录入'}; } const res = await fetch(`${apiBase}${path}`,{method:'POST',credentials:'include',headers,body:JSON.stringify(body)}); if (!res.ok) throw new Error(); close(); await Promise.all([loadPage(),loadDashboard()]); } catch { actionError.value = '保存失败，请检查后端连接与表单内容'; } finally { actionBusy.value = false; } }
 function pageAction(title: string) { if (title === '智能预警') { runWarningAnalysis(); return; } open(title === '学生档案' ? '新增学生' : title === '一人一策' ? '生成帮扶方案' : title === '机智币' ? '新增积分记录' : title === '六机任务' ? '发布成长任务' : title === '班级诊改' ? '新增诊改目标' : '新增记录'); }
-function switchView() { school.value = !school.value; active.value = '概览'; history.replaceState(null, '', school.value ? '?view=school' : '?view=reference'); }
+function switchView() { if (!referenceAvailable) return; school.value = !school.value; active.value = '概览'; history.replaceState(null, '', school.value ? '?view=school' : '?view=reference'); }
 function keys(e: KeyboardEvent) { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); open('搜索'); } }
 async function loadDashboard() { try { const res = await fetch(`${apiBase}/dashboard/class`, { credentials: 'include' }); if (!res.ok) throw new Error('backend unavailable'); const body = await res.json(); dashboard.value = body.data ?? {}; live.value = true; } catch { liveError.value = '后端未连接，当前显示演示数据'; } }
 async function signIn() { signingIn.value = true; loginError.value = ''; try { const res = await fetch(`${apiBase}/auth/login`, { method: 'POST', credentials: 'include', headers: {'Content-Type':'application/json'}, body: JSON.stringify({username: username.value, password: password.value}) }); if (!res.ok) throw new Error('登录失败'); location.href = '/?view=school'; } catch { loginError.value = '暂时无法登录，请检查后端服务或账号密码'; } finally { signingIn.value = false; } }
@@ -111,17 +113,17 @@ onUnmounted(() => document.removeEventListener('keydown', keys));
       <div class="brand-area">
         <button class="icon-button sidebar-toggle" aria-label="切换侧栏" :aria-expanded="!collapsed" @click="collapsed = !collapsed"><PanelLeft /></button>
         <a class="brand" href="#" @click.prevent="active = '概览'">
-          <img src="/favicon.svg" alt="" /> <strong>{{ t('bytecat', '智小匠') }}</strong>
+          <img src="/favicon.svg" alt="" /> <strong>{{ t('控制台', '智小匠') }}</strong>
         </a>
       </div>
       <nav class="top-nav" aria-label="主导航">
-        <button v-for="label in (school ? ['首页', '工作台', '学生成长', '六机任务', '帮助', '关于'] : ['主页', '控制台', '模型广场', '排行榜', '文档', '关于'])" :key="label" @click="label === '学生成长' ? choose('学生档案') : label === '六机任务' ? choose('六机任务') : ['首页', '工作台', '主页', '控制台'].includes(label) ? active = '概览' : open(label)">{{ label }}</button>
+        <button v-for="label in (school ? ['首页', '工作台', '学生成长', '六机任务', '帮助', '关于'] : ['主页', '控制台', '功能中心', '公告板', '文档', '关于'])" :key="label" @click="label === '学生成长' ? choose('学生档案') : label === '六机任务' ? choose('六机任务') : ['首页', '工作台', '主页', '控制台'].includes(label) ? active = '概览' : open(label)">{{ label }}</button>
       </nav>
       <button class="search-button" @click="open('搜索')"><Search /><span>搜索</span><kbd>⌘ K</kbd></button>
       <div class="top-tools">
         <button class="icon-button notification" aria-label="通知，2条" @click="open('通知')"><Bell /><span>2</span></button>
         <button class="icon-button optional-tool" aria-label="语言" @click="open('语言')"><Languages /></button>
-        <button class="icon-button" aria-label="视觉版本" @click="open('视觉版本')"><Palette /></button>
+        <button v-if="referenceAvailable" class="icon-button" aria-label="视觉版本" @click="open('视觉版本')"><Palette /></button>
         <button class="avatar" aria-label="个人资料" @click="school ? choose('教师资料') : open('个人资料')">{{ t('J', '师') }}</button>
       </div>
     </header>
@@ -134,7 +136,7 @@ onUnmounted(() => document.removeEventListener('keydown', keys));
         </button>
       </section>
       <button class="view-switch logout-switch" @click="logout"><UserRound /><span>退出登录</span></button>
-      <button class="view-switch" @click="switchView"><Palette /><span>{{ school ? '查看参考复原' : '切换智小匠' }}</span></button>
+      <button v-if="referenceAvailable" class="view-switch" @click="switchView"><Palette /><span>{{ school ? '查看参考复原' : '切换智小匠' }}</span></button>
     </aside>
 
     <main class="canvas">
@@ -145,11 +147,11 @@ onUnmounted(() => document.removeEventListener('keydown', keys));
           <div class="onboarding panel">
             <div class="onboarding-copy">
               <div class="eyebrow"><ListTodo />{{ t('开始使用', '成长工作台') }}</div>
-              <h2>{{ t('几分钟内开始使用你的 API 网关', '让每一位学生的成长被看见') }}</h2>
+              <h2>{{ t('几分钟内开始使用你的控制台', '让每一位学生的成长被看见') }}</h2>
               <p class="intro-description">{{ t('集中展示密钥、余额、路由和服务状态。', '汇集成长数据、智能研判与精准帮扶。') }}</p>
               <div class="guide-actions">
                 <button class="button" @click="guide = !guide"><ChevronUp v-if="guide"/><ChevronDown v-else/>{{ guide ? '隐藏' : '显示' }}{{ t('设置引导', '成长引导') }}</button>
-                <button class="button primary" @click="school ? choose('成长画像') : open('创建 API 密钥')"><component :is="school ? ClipboardCheck : KeyRound"/>{{ t('创建 API 密钥', '记录学生成长') }}</button>
+                <button class="button primary" @click="school ? choose('成长画像') : open('创建访问密钥')"><component :is="school ? ClipboardCheck : KeyRound"/>{{ t('创建访问密钥', '记录学生成长') }}</button>
               </div>
               <div v-if="guide" class="steps">
                 <div v-for="(step, index) in steps" :key="step.title" class="step">
@@ -164,16 +166,16 @@ onUnmounted(() => document.removeEventListener('keydown', keys));
             </div>
 
             <div class="request-card">
-              <div class="request-header"><span class="icon-tile blue"><component :is="school ? GraduationCap : SquareTerminal"/></span><div><h3>{{ t('首个 API 请求', '小智 · 成长关注') }}</h3><p>{{ t('创建 API 密钥以解锁真实请求', '近期学业、活动参与同步下降') }}</p></div><button class="button compact" @click="open(t('创建 API 密钥', '学生成长画像'))">{{ t('创建 API 密钥', '查看画像') }}</button></div>
-              <div v-if="!school" class="code-panel"><div class="traffic-lights"><i/><i/><i/></div><pre>curl https://www.bytecatcode.org/v1/chat/completions \
+              <div class="request-header"><span class="icon-tile blue"><component :is="school ? GraduationCap : SquareTerminal"/></span><div><h3>{{ t('首个 API 请求', '小智 · 成长关注') }}</h3><p>{{ t('创建访问密钥以解锁真实请求', '近期学业、活动参与同步下降') }}</p></div><button class="button compact" @click="open(t('访问密钥', '学生成长画像'))">{{ t('访问密钥', '查看画像') }}</button></div>
+              <div v-if="!school" class="code-panel"><div class="traffic-lights"><i/><i/><i/></div><pre>curl https://api.example.com/v1/chat/completions \
 -H "Content-Type: application/json" \
--H "Authorization: Bearer sk-..." \
--d '{"model":"claude-fable-5","messages":...}'</pre></div>
+-H "Authorization: Bearer $API_KEY" \
+-d '{"model":"example-model","messages":...}'</pre></div>
               <div v-else class="student-trend"><div class="trend-heading"><span>数学成绩 · 最近四次</span><span class="muted">趋势证据</span></div><div class="trend-scores"><span>78</span><span>70</span><span>63</span><span>58</span></div><svg viewBox="0 0 300 60" aria-label="数学成绩连续下降"><path d="M10 8L104 24L198 40L290 52" fill="none" stroke="#df795d" stroke-width="2.5"/><g fill="#df795d"><circle cx="10" cy="8" r="3"/><circle cx="104" cy="24" r="3"/><circle cx="198" cy="40" r="3"/><circle cx="290" cy="52" r="3"/></g></svg></div>
               <div class="status-list">
                 <div><span class="mini-icon blue"><RadioTower /></span><strong>{{ t('路由已启用', '成长数据已更新') }}</strong><span>{{ t('在线', '今日') }}</span></div>
                 <div><span class="mini-icon green"><ShieldCheck /></span><strong>{{ t('认证已配置', '教师人工研判') }}</strong><span>{{ t('需要 API 密钥', '待确认') }}</span></div>
-                <div><span class="mini-icon pink"><Timer /></span><strong>{{ t('已选择模型', '下一次成长复评') }}</strong><span>{{ t('claude-fable-5', '两周后') }}</span></div>
+                <div><span class="mini-icon pink"><Timer /></span><strong>{{ t('已选择模型', '下一次成长复评') }}</strong><span>{{ t('example-model', '两周后') }}</span></div>
               </div>
               <p v-if="school" class="ai-note">AI 辅助建议，仅供教师参考。</p>
             </div>
@@ -184,9 +186,9 @@ onUnmounted(() => document.removeEventListener('keydown', keys));
 
         <section class="usage panel">
           <div class="usage-main"><h2>{{ t('用量概览', '班级概览') }}</h2><p class="section-description">{{ t('监控余额、用量和请求量', '关注出勤、成长与任务完成情况') }}</p><div class="stats-grid"><article v-for="stat in stats" :key="stat.label" class="stat-card" :class="stat.tone"><div class="stat-label"><span class="mini-icon" :class="stat.tone"><component :is="stat.icon"/></span>{{ stat.label }}</div><strong class="stat-value">{{ stat.value }}</strong><p>{{ stat.description }}</p><div class="stat-line"/></article></div></div>
-          <aside class="balance"><div class="balance-label"><span>{{ t('剩余额度', '本月任务完成率') }}</span><span class="health"><i/>{{ t('正常', '稳步推进') }}</span></div><strong class="balance-value">{{ t('$10', '89%') }}</strong><div class="balance-mini"><div><span><Flame/>{{ t('近 24 小时消耗', '待关注学生') }}</span><strong>{{ t('$0', '4 人') }}</strong></div><div><span><ShieldCheck/>{{ t('可用时长', '本月成长变化') }}</span><strong>{{ t('暂无使用记录', '+4.3') }}</strong></div></div><button class="button primary balance-action" @click="open(t('钱包', '六机成长任务'))">{{ t('钱包', '查看成长任务') }}<ArrowRight/></button></aside>
+          <aside class="balance"><div class="balance-label"><span>{{ t('剩余额度', '本月任务完成率') }}</span><span class="health"><i/>{{ t('正常', '稳步推进') }}</span></div><strong class="balance-value">{{ t('$10', '89%') }}</strong><div class="balance-mini"><div><span><Flame/>{{ t('近 24 小时消耗', '待关注学生') }}</span><strong>{{ t('$0', '4 人') }}</strong></div><div><span><ShieldCheck/>{{ t('可用时长', '本月成长变化') }}</span><strong>{{ t('暂无使用记录', '+4.3') }}</strong></div></div><button class="button primary balance-action" @click="open(t('计费中心', '六机成长任务'))">{{ t('计费中心', '查看成长任务') }}<ArrowRight/></button></aside>
         </section>
-        <footer class="preview-footer"><span>视觉复原预览 · {{ school ? '智小匠业务适配' : '参考控制台' }} · {{ live ? '实时数据' : '演示数据' }}</span><button @click="switchView">{{ school ? '查看参考复原' : '切换智小匠视图' }}<ArrowRight/></button></footer>
+        <footer class="preview-footer"><span>{{ referenceAvailable ? '视觉复原预览 · ' : '' }}{{ school ? '智小匠业务适配' : '参考控制台' }} · {{ live ? '实时数据' : '演示数据' }}</span><button v-if="referenceAvailable" @click="switchView">{{ school ? '查看参考复原' : '切换智小匠视图' }}<ArrowRight/></button></footer>
       </div>
       <StudentRecords v-else-if="school && active === '学生档案'" />
       <PointsPage v-else-if="school && active === '机智币'" />
@@ -203,7 +205,7 @@ onUnmounted(() => document.removeEventListener('keydown', keys));
     <dialog ref="dialog" @click="(e) => e.target === dialog && close()" @close="panel = ''">
       <div class="dialog-heading"><h2>{{ panel }}</h2><button class="icon-button" aria-label="关闭" @click="close"><X/></button></div>
       <template v-if="panel === '搜索'"><label class="dialog-search"><Search/><input v-model="query" autofocus placeholder="搜索页面与操作" aria-label="搜索页面与操作"/></label><div class="search-results"><button v-for="result in searchResults" :key="result.label" @click="choose(result.label)"><component :is="result.icon"/>{{ result.label }}<ArrowRight/></button><p v-if="!searchResults.length" class="muted">没有找到匹配页面</p></div></template>
-      <template v-else-if="panel === '视觉版本'"><p class="dialog-description">相同的布局、字体和组件，查看两种内容版本。</p><button class="version-choice" @click="school = false; close()"><Palette/>参考复原<Check v-if="!school"/></button><button class="version-choice" @click="school = true; close()"><GraduationCap/>智小匠<Check v-if="school"/></button></template>
+      <template v-else-if="panel === '视觉版本'"><p class="dialog-description">{{ referenceAvailable ? '相同的布局、字体和组件，查看两种内容版本。' : '生产构建固定使用智小匠业务视图，参考对照仅在本地开发可用。' }}</p><button v-if="referenceAvailable" class="version-choice" @click="school = false; close()"><Palette/>参考复原<Check v-if="!school"/></button><button class="version-choice" @click="school = true; close()"><GraduationCap/>智小匠<Check v-if="school"/></button></template>
       <template v-else-if="panel === '通知'"><div class="notice-row"><span class="mini-icon orange"><Palette/></span><div><strong>视觉复原预览已就绪</strong><p>顶部调色板可切换参考版与智小匠版。</p></div></div><div class="notice-row"><span class="mini-icon blue"><ShieldCheck/></span><div><strong>数据连接状态</strong><p>{{ live ? '已连接 Oracle 数据服务。' : '当前使用演示数据，保存操作需要后端在线。' }}</p></div></div></template>
       <template v-else-if="['新增学生','新增积分记录','发布成长任务','新增诊改目标','生成帮扶方案','新增记录'].includes(panel)"><form class="action-form" @submit.prevent="saveAction"><label v-if="panel === '新增学生'">姓名<input v-model="formTitle" required placeholder="请输入学生姓名"/></label><label v-else-if="panel !== '新增积分记录'">标题<input v-model="formTitle" required placeholder="请输入标题"/></label><label v-if="panel === '新增学生'">性别（可选）<input v-model="formNote" placeholder="男 / 女"/></label><label v-else-if="panel === '新增积分记录'">积分变化<input v-model.number="formAmount" type="number" required /></label><label v-if="panel === '新增诊改目标'">目标值（%）<input v-model.number="formAmount" type="number" min="0" max="100" required /></label><label v-if="panel === '新增记录'">评分（0–100）<input v-model.number="formAmount" type="number" min="0" max="100" required /></label><label v-if="panel === '发布成长任务' || panel === '新增记录'">日期<input v-model="formDate" type="date" /></label><label v-if="!['新增诊改目标','新增学生'].includes(panel)">说明<textarea v-model="formNote" rows="3" placeholder="补充说明（可选）"></textarea></label><p v-if="actionError" class="login-error">{{ actionError }}</p><button class="button primary dialog-done" :disabled="actionBusy">{{ actionBusy ? '保存中…' : '保存记录' }}</button></form></template>
       <template v-else><div class="placeholder-icon"><component :is="school ? GraduationCap : LayoutDashboard"/></div><p class="dialog-description">这是「{{ panel }}」的操作入口。保存后将由后端写入 MySQL，并保留操作者与时间记录。</p><button class="button primary dialog-done" @click="close">返回概览</button></template>
