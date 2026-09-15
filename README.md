@@ -1,6 +1,29 @@
 # 智小匠 MVP
 
-班主任端学生成长与班级治理平台。当前仓库包含 Vue 3 前端、Spring Boot 3 后端、数据库迁移脚本与 Oracle SSH 隧道脚本。
+班主任端学生成长与班级治理平台。仓库包含 Spring Boot 3 后端与 Vue 3 前端两个工程。
+
+## 工程结构
+
+后端用 Maven 父子工程管理，前端是独立 npm 工程：
+
+```text
+zhixiaojiang/                   Maven 聚合父工程（packaging=pom，统一 Java 版本、依赖版本与插件版本）
+├── pom.xml                     父 POM：modules、dependencyManagement、pluginManagement
+├── zhixiaojiang-server/        后端子模块（Spring Boot 可执行 jar）
+└── zhixiaojiang-web/           前端工程（Vue 3 + Vite，npm 独立构建，不参与 Maven 生命周期）
+```
+
+后端命令在**仓库根目录**执行：
+
+```sh
+mvn test                                      # 聚合构建并运行全部后端测试
+mvn -DskipTests package                       # 产出 zhixiaojiang-server/target/zhixiaojiang-server-0.1.0.jar
+mvn -pl zhixiaojiang-server spring-boot:run   # 只启动后端子模块
+```
+
+前端命令在 `zhixiaojiang-web` 目录执行：`npm install`、`npm run dev`、`npm run build`。
+
+前端不登记为 Maven module：它由 npm 独立构建，避免 Maven 构建依赖 Node 环境。若后续需要一次构建前后端，可用 frontend-maven-plugin 增加一个 web 模块。
 
 ## 本地预览
 
@@ -14,7 +37,7 @@ npm run dev
 
 ## 后端运行
 
-先使用管理员账号执行 [create-app-user.sql](zhixiaojiang-server/sql/create-app-user.sql)，创建独立的 `zhixiaojiang` 数据库及专用账号。脚本中的密码为本次生成的初始密码，首次登录后建议按你的密钥管理规范轮换。当前配置直接连接 Oracle 公网地址 `192.9.244.190` 的 MySQL 和 Redis 端口；SSH 隧道脚本仍保留作备用。
+先使用管理员账号执行 [create-app-user.sql](zhixiaojiang-server/sql/create-app-user.sql)，创建独立的 `zhixiaojiang` 数据库及专用账号。脚本中的 `<DB_PASSWORD>` 需替换为你自己生成的高强度密码，并通过 `DB_PASSWORD` 环境变量或本机 `config/application-local.yml` 注入应用；仓库不保存任何口令。当前配置直接连接 Oracle 公网地址 `192.9.244.190` 的 MySQL 和 Redis 端口。
 
 ```sh
 cd zhixiaojiang-server
@@ -25,6 +48,8 @@ export REDIS_HOST='192.9.244.190'
 export REDIS_PORT='6379'
 mvn spring-boot:run
 ```
+
+也可在仓库根目录执行 `mvn -pl zhixiaojiang-server spring-boot:run`，效果相同。
 
 直连模式不会在本机监听数据库端口；应用只向 Oracle 发起出站连接。登录会话使用 HttpOnly Cookie，退出时仅在 `zhixiaojiang:` 命名空间写入撤销标记，不会清理共享 Redis，也不会修改 Oracle 上已有应用。默认演示账号为 `teacher / password`，正式使用前请替换。
 

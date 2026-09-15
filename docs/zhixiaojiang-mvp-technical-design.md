@@ -92,11 +92,15 @@ AI 仅承担数据归纳、趋势解释和建议生成。涉及心理、安全�
 | 对象 | 名称 |
 |---|---|
 | Git 主项目 | `zhixiaojiang` |
-| 前端工程 | `zhixiaojiang-web` |
+| Maven 父工程 | `com.zhixiaojiang:zhixiaojiang`（`packaging=pom`，仓库根目录 `pom.xml`） |
+| Maven 子模块 | `zhixiaojiang-server`（当前唯一参与 Maven 生命周期的模块） |
+| 前端工程 | `zhixiaojiang-web`（独立 npm 工程，不登记为 Maven module） |
 | 后端工程 | `zhixiaojiang-server` |
 | Java artifactId | `zhixiaojiang-server` |
 | Java 根包 | `com.zhixiaojiang` |
 | 数据库 | `zhixiaojiang` |
+
+后端使用 Maven 父子工程管理：根目录 `pom.xml` 为聚合父 POM，统一约束 Java 版本、依赖版本与插件版本，子模块只声明 artifactId 与依赖；前端保持独立 npm 工程，由 npm 单独构建与部署，因此 Maven 构建不依赖 Node 环境。后端命令在仓库根目录执行：`mvn test`、`mvn -DskipTests package`、`mvn -pl zhixiaojiang-server spring-boot:run`。
 
 ### 4.2 系统分层
 
@@ -587,4 +591,4 @@ nginx
 
 ## 15. 实施门禁
 
-本版本已进入实施阶段。前端工程、Spring Boot 后端、数据库脚本、公网直连配置和冒烟测试脚本均已创建；Docker、公网发布和学生/家长端仍不在本轮范围内。
+本版本已进入实施阶段。仓库采用 Maven 父子工程管理后端：仓库根目录为聚合父 POM（`packaging=pom`），当前登记 `zhixiaojiang-server` 一个后端子模块，统一约束 Java 版本、依赖版本与插件版本；前端 `zhixiaojiang-web` 为独立 npm 工程，不参与 Maven 生命周期。数据库脚本、公网直连配置和接口冒烟测试均已就绪；Docker、公网发布和学生/家长端仍不在本轮范围内。

@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <!--
+    智小匠父工程（聚合 POM）。
+    - 统一约束 Java 版本、依赖版本与插件版本，子模块只声明 artifactId，不再重复版本号；
+    - 只聚合参与 Maven 生命周期的后端子模块；
+    - 前端 zhixiaojiang-web 是独立 npm 工程，不登记为 module，由 npm 单独构建与部署。
+  -->
+  <parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>3.4.3</version>
+    <relativePath/>
+  </parent>
+
+  <groupId>com.zhixiaojiang</groupId>
+  <artifactId>zhixiaojiang</artifactId>
+  <version>0.1.0</version>
+  <packaging>pom</packaging>
+
+  <name>zhixiaojiang</name>
+  <description>智小匠：班主任端学生成长与班级治理平台</description>
+
+  <modules>
+    <module>zhixiaojiang-server</module>
+  </modules>
+
+  <properties>
+    <java.version>17</java.version>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    <!-- demo profile 与隔离测试使用的内嵌库；保持原有版本，不因结构调整升级依赖。 -->
+    <h2.version>2.2.224</h2.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <!--
+        子模块共用的第三方依赖版本集中在此声明；Spring 生态的版本由 spring-boot-starter-parent 管理。
+        当前只有一个后端子模块，保留本节是为了后续新增模块时不变更子模块的依赖写法。
+      -->
+      <dependency>
+        <groupId>com.h2database</groupId>
+        <artifactId>h2</artifactId>
+        <version>${h2.version}</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.springframework.boot</groupId>
+          <artifactId>spring-boot-maven-plugin</artifactId>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+  </build>
+</project>
