@@ -1,5 +1,8 @@
 package com.zhixiaojiang;
 
+import com.zhixiaojiang.auth.TeacherScope;
+import com.zhixiaojiang.common.ApiResult;
+import com.zhixiaojiang.common.constant.PointCategory;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
@@ -34,7 +37,7 @@ public class PointsController {
       row.put("reversalOf",key.startsWith("reverse:") ? Long.parseLong(key.substring(8)) : null);
       return row;
     },id,size,(current-1)*size);
-    return ok(Map.of("items",items,"page",current,"pageSize",size,
+    return ApiResult.ok(Map.of("items",items,"page",current,"pageSize",size,
         "total",db.queryForObject("select count(*) from point_ledger where student_id=?",Long.class,id),
         "balance",db.queryForObject("select coalesce(sum(amount),0) from point_ledger where student_id=?",Long.class,id)));
   }
@@ -43,22 +46,22 @@ public class PointsController {
   Map<String,Object> award(@Valid @RequestBody Award award, HttpServletRequest request) {
     long teacher = scope.requireStudent(award.studentId(),request);
     Integer amount = award.amount();
-    String category = "MANUAL";
+    PointCategory category = PointCategory.MANUAL;
     if (award.ruleId() != null) {
       var rules = db.queryForList("select amount from point_rule where id=? and enabled=true",award.ruleId());
       if (rules.isEmpty()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"积分规则不存在或已停用");
-      amount = ((Number)rules.get(0).get("amount")).intValue(); category = "RULE";
+      amount = ((Number)rules.get(0).get("amount")).intValue(); category = PointCategory.RULE;
     }
     if (amount == null || amount == 0 || amount < -1000 || amount > 1000)
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"积分必须是 -1000 至 1000 的非零整数");
     String key = "teacher:"+teacher+":"+award.idempotencyKey();
-    int changed = db.update("insert ignore into point_ledger(student_id,amount,category,reason,idempotency_key,created_by) values(?,?,?,?,?,?)",award.studentId(),amount,category,award.reason().trim(),key,teacher);
+    int changed = db.update("insert ignore into point_ledger(student_id,amount,category,reason,idempotency_key,created_by) values(?,?,?,?,?,?)",award.studentId(),amount,category.name(),award.reason().trim(),key,teacher);
     var saved = db.queryForMap("select id,student_id,amount,category,reason from point_ledger where idempotency_key=?",key);
-    if (((Number)saved.get("student_id")).longValue()!=award.studentId() || ((Number)saved.get("amount")).intValue()!=amount || !saved.get("reason").equals(award.reason().trim()) || !saved.get("category").equals(category))
+    if (((Number)saved.get("student_id")).longValue()!=award.studentId() || ((Number)saved.get("amount")).intValue()!=amount || !saved.get("reason").equals(award.reason().trim()) || !saved.get("category").equals(category.name()))
       throw new ResponseStatusException(HttpStatus.CONFLICT,"重复请求的内容发生变化，请重新创建记录");
     long id = ((Number)saved.get("id")).longValue();
     if(changed==1) audit(teacher,"CREATE",id,"录入机智币");
-    return ok(Map.of("id",id,"saved",changed==1,"idempotencyKey",award.idempotencyKey()));
+    return ApiResult.ok(Map.of("id",id,"saved",changed==1,"idempotencyKey",award.idempotencyKey()));
   }
 
   @PostMapping("/points/{id}/reverse") @Transactional
@@ -67,15 +70,14 @@ public class PointsController {
     if(matches.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"积分记录不存在");
     var original = matches.get(0);
     long teacher = scope.requireStudent(((Number)original.get("student_id")).longValue(),request);
-    if ("REVERSAL".equals(original.get("category"))) throw new ResponseStatusException(HttpStatus.CONFLICT,"反向流水不能再次撤销，请新建纠错记录");
+    if (PointCategory.REVERSAL.name().equals(original.get("category"))) throw new ResponseStatusException(HttpStatus.CONFLICT,"反向流水不能再次撤销，请新建纠错记录");
     String reason = "撤销："+original.get("reason");
-    int changed = db.update("insert ignore into point_ledger(student_id,amount,category,reason,idempotency_key,created_by) values(?,?,'REVERSAL',?,?,?)",original.get("student_id"),-((Number)original.get("amount")).intValue(),reason.substring(0,Math.min(160,reason.length())),"reverse:"+id,teacher);
+    int changed = db.update("insert ignore into point_ledger(student_id,amount,category,reason,idempotency_key,created_by) values(?,?,?,?,?,?)",original.get("student_id"),-((Number)original.get("amount")).intValue(),PointCategory.REVERSAL.name(),reason.substring(0,Math.min(160,reason.length())),"reverse:"+id,teacher);
     if(changed==1) audit(teacher,"REVERSE",id,"撤销机智币，保留原流水");
-    return ok(Map.of("saved",changed==1));
+    return ApiResult.ok(Map.of("saved",changed==1));
   }
 
   private void audit(long actor,String action,long id,String summary) {
     db.update("insert into audit_log(actor_id,action,entity_type,entity_id,summary) values(?,?,'point_ledger',?,?)",actor,action,id,summary);
   }
-  private Map<String,Object> ok(Object data) { return Map.of("code","0","message","success","data",data,"requestId",UUID.randomUUID().toString()); }
 }

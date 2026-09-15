@@ -1,5 +1,9 @@
 package com.zhixiaojiang;
 
+import com.zhixiaojiang.auth.TeacherScope;
+import com.zhixiaojiang.common.ApiResult;
+import com.zhixiaojiang.common.constant.AttendanceStatus;
+import com.zhixiaojiang.common.constant.GrowthDimension;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
@@ -32,13 +36,13 @@ public class GrowthWorkspaceController {
                              @DecimalMin("0") @DecimalMax("100") BigDecimal smartScore,
                              @NotBlank @Size(max=1000) String evidence) {}
     public record Attendance(@NotNull @PastOrPresent LocalDate attendanceDate,
-                             @NotBlank @Pattern(regexp="PRESENT|LATE|ABSENT|LEAVE") String status,
+                             @NotBlank @Pattern(regexp=AttendanceStatus.PATTERN) String status,
                              @Size(max=200) String note) {}
     public record Skill(@NotBlank @Size(max=120) String skillName,
                         @NotNull @DecimalMin("0") @DecimalMax("100") BigDecimal score,
                         @Size(max=32) String level,@NotNull @PastOrPresent LocalDate occurredOn,
                         @NotBlank @Size(max=500) String evidence) {}
-    public record Growth(@NotBlank @Pattern(regexp="MORAL|SKILL|THINKING|SMART") String dimension,
+    public record Growth(@NotBlank @Pattern(regexp=GrowthDimension.PATTERN) String dimension,
                          @NotNull @DecimalMin("0") @DecimalMax("100") BigDecimal score,
                          @NotBlank @Size(max=160) String title,@Size(max=500) String detail,
                          @NotNull @PastOrPresent LocalDate occurredOn,@NotBlank @Size(max=64) String source) {}
@@ -70,7 +74,7 @@ public class GrowthWorkspaceController {
         data.put("growth",rows("select id,dimension,score,title,detail,occurred_on,source,created_by from growth_record where student_id=? and occurred_on between ? and ? order by occurred_on desc,id desc limit 100",studentId,start,end));
         data.put("attendance",rows("select id,attendance_date,status,note,created_by from attendance_record where student_id=? and attendance_date between ? and ? order by attendance_date desc limit 100",studentId,start,end));
         data.put("skills",rows("select id,skill_name,score,level,occurred_on,evidence,created_by from skill_record where student_id=? and occurred_on between ? and ? order by occurred_on desc,id desc limit 100",studentId,start,end));
-        return ok(data);
+        return ApiResult.ok(data);
     }
 
     @PostMapping("/scores") @Transactional
@@ -80,7 +84,7 @@ public class GrowthWorkspaceController {
         if(db.queryForObject("select count(*) from score_record where student_id=? and subject=? and exam_name=?",Integer.class,studentId,exam.subject().trim(),exam.examName().trim())>0)
             throw new ResponseStatusException(HttpStatus.CONFLICT,"该学生已有同科目、同考试批次成绩，请勿重复录入");
         long id=insert("insert into score_record(student_id,subject,exam_name,score,full_score,occurred_on,created_by) values(?,?,?,?,?,?,?)",studentId,exam.subject().trim(),exam.examName().trim(),exam.score(),exam.fullScore(),exam.occurredOn(),actor);
-        audit(actor,"score_record",id,"教师录入考试成绩"); return ok(Map.of("id",id));
+        audit(actor,"score_record",id,"教师录入考试成绩"); return ApiResult.ok(Map.of("id",id));
     }
 
     @PostMapping("/attendance") @Transactional
@@ -90,19 +94,19 @@ public class GrowthWorkspaceController {
         long id;
         if(existing.isEmpty()) id=insert("insert into attendance_record(student_id,attendance_date,status,note,created_by) values(?,?,?,?,?)",studentId,attendance.attendanceDate(),attendance.status(),attendance.note(),actor);
         else {id=existing.get(0);db.update("update attendance_record set status=?,note=?,created_by=? where id=?",attendance.status(),attendance.note(),actor,id);}
-        audit(actor,"attendance_record",id,"教师登记出勤："+attendance.status());return ok(Map.of("saved",true,"id",id));
+        audit(actor,"attendance_record",id,"教师登记出勤："+attendance.status());return ApiResult.ok(Map.of("saved",true,"id",id));
     }
     @PostMapping("/skills") @Transactional
     Map<String,Object> skill(@PathVariable long studentId,@Valid @RequestBody Skill skill,HttpServletRequest request) {
         long actor=scope.requireStudent(studentId,request,true);
         long id=insert("insert into skill_record(student_id,skill_name,score,level,occurred_on,evidence,created_by) values(?,?,?,?,?,?,?)",studentId,skill.skillName().trim(),skill.score(),skill.level(),skill.occurredOn(),skill.evidence().trim(),actor);
-        audit(actor,"skill_record",id,"教师录入技能记录");return ok(Map.of("id",id));
+        audit(actor,"skill_record",id,"教师录入技能记录");return ApiResult.ok(Map.of("id",id));
     }
     @PostMapping("/growth") @Transactional
     Map<String,Object> growth(@PathVariable long studentId,@Valid @RequestBody Growth growth,HttpServletRequest request) {
         long actor=scope.requireStudent(studentId,request,true);
         long id=insert("insert into growth_record(student_id,dimension,score,title,detail,occurred_on,source,created_by) values(?,?,?,?,?,?,?,?)",studentId,growth.dimension(),growth.score(),growth.title().trim(),growth.detail(),growth.occurredOn(),growth.source().trim(),actor);
-        audit(actor,"growth_record",id,"教师录入成长记录");return ok(Map.of("id",id));
+        audit(actor,"growth_record",id,"教师录入成长记录");return ApiResult.ok(Map.of("id",id));
     }
 
     @PostMapping("/evaluations") @Transactional
@@ -111,7 +115,7 @@ public class GrowthWorkspaceController {
         if(evaluation.periodStart().isAfter(evaluation.periodEnd())) throw bad("评价周期开始日期不能晚于结束日期");
         if(evaluation.moralScore()==null && evaluation.skillScore()==null && evaluation.thinkingScore()==null && evaluation.smartScore()==null) throw bad("请至少填写一个维度的评价分数");
         long id=insert("insert into dimension_evaluation(student_id,period_start,period_end,moral_score,skill_score,thinking_score,smart_score,evidence,created_by) values(?,?,?,?,?,?,?,?,?)",studentId,evaluation.periodStart(),evaluation.periodEnd(),evaluation.moralScore(),evaluation.skillScore(),evaluation.thinkingScore(),evaluation.smartScore(),evaluation.evidence().trim(),actor);
-        audit(actor,"dimension_evaluation",id,"教师录入四维评价"); return ok(Map.of("id",id));
+        audit(actor,"dimension_evaluation",id,"教师录入四维评价"); return ApiResult.ok(Map.of("id",id));
     }
 
     private List<Map<String,Object>> rows(String sql,Object... args) {
@@ -135,5 +139,4 @@ public class GrowthWorkspaceController {
     }
     private void audit(long actor,String entity,long id,String summary){db.update("insert into audit_log(actor_id,action,entity_type,entity_id,summary) values(?,'CREATE',?,?,?)",actor,entity,id,summary);}
     private ResponseStatusException bad(String message){return new ResponseStatusException(HttpStatus.BAD_REQUEST,message);}
-    private Map<String,Object> ok(Object data){return Map.of("code","0","message","success","data",data,"requestId",UUID.randomUUID().toString());}
 }

@@ -102,6 +102,8 @@ AI 仅承担数据归纳、趋势解释和建议生成。涉及心理、安全�
 
 后端使用 Maven 父子工程管理：根目录 `pom.xml` 为聚合父 POM，统一约束 Java 版本、依赖版本与插件版本，子模块只声明 artifactId 与依赖；前端保持独立 npm 工程，由 npm 单独构建与部署，因此 Maven 构建不依赖 Node 环境。后端命令在仓库根目录执行：`mvn test`、`mvn -DskipTests package`、`mvn -pl zhixiaojiang-server spring-boot:run`。
 
+Java 代码按职责分包：`common`（统一响应结构与全局异常）、`common.constant`（业务取值域枚举，常量名与库内存储值一致）、`config`（Web 安全配置）与 `auth`（会话令牌、会话撤销、班级授权边界）。Web 入口控制器当前仍位于根包，后续按业务域拆分到 `controller`，并引入 `service`/`dao` 分层，对应「应用分层」规约的后续改造项。
+
 ### 4.2 系统分层
 
 ```text

@@ -1,6 +1,9 @@
 package com.zhixiaojiang;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.zhixiaojiang.common.ApiResult;
+import com.zhixiaojiang.common.constant.WarningLevel;
+import com.zhixiaojiang.common.constant.WarningStatus;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
@@ -15,40 +18,46 @@ import java.util.*;
 
 @RestController @RequestMapping("/api/v1/warnings")
 public class WarningReviewController {
+    /** 预警列表的“全部状态”筛选值，仅用于查询，不属于 WarningStatus 的取值域。 */
+    private static final String STATUS_ALL = "ALL";
+
     private final JdbcTemplate db; private final ObjectMapper json;
     public WarningReviewController(JdbcTemplate db,ObjectMapper json){this.db=db;this.json=json;}
     public record Review(@NotBlank @Size(max=400) String note,
-                         @NotBlank @Pattern(regexp="OPEN|REVIEWED") String expectedStatus,
+                         @NotBlank @Pattern(regexp=WarningStatus.PATTERN_TRIAGE) String expectedStatus,
                          boolean escalate) {}
     private static final String SELECT="select w.*,s.name student_name,s.student_no from warning_record w join student s on s.id=w.student_id join class_room c on c.id=s.class_id ";
-    @GetMapping Map<String,Object> list(@RequestParam(defaultValue="OPEN") String status,
+    @GetMapping Map<String,Object> list(@RequestParam(required=false) String status,
         @RequestParam(defaultValue="") String q,@RequestParam(defaultValue="1") int page,
         @RequestParam(defaultValue="20") int pageSize,HttpServletRequest request){
-        if(!Set.of("ALL","OPEN","REVIEWED","CLOSED").contains(status))throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"未知预警状态");
+        boolean all=STATUS_ALL.equals(status);
+        WarningStatus requested=status==null||status.isBlank()?WarningStatus.OPEN:WarningStatus.of(status);
+        if(!all&&requested==null)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"未知预警状态");
+        String filter=all?STATUS_ALL:requested.name();
         int current=Math.max(1,page),size=Math.max(1,Math.min(100,pageSize));
-        String where="where c.teacher_id=? and (?='ALL' or w.status=?) and (s.name like ? or s.student_no like ? or w.summary like ?)";
+        String where="where c.teacher_id=? and (?='"+STATUS_ALL+"' or w.status=?) and (s.name like ? or s.student_no like ? or w.summary like ?)";
         String like="%"+q.trim()+"%";long actor=actor(request);
-        var items=db.query(SELECT+where+" order by w.id desc limit ? offset ?",(rs,n)->row(rs),actor,status,status,like,like,like,size,(current-1)*size);
-        Long total=db.queryForObject("select count(*) from warning_record w join student s on s.id=w.student_id join class_room c on c.id=s.class_id "+where,Long.class,actor,status,status,like,like,like);
-        return ok(Map.of("items",items,"total",total,"page",current,"pageSize",size));
+        var items=db.query(SELECT+where+" order by w.id desc limit ? offset ?",(rs,n)->row(rs),actor,filter,filter,like,like,like,size,(current-1)*size);
+        Long total=db.queryForObject("select count(*) from warning_record w join student s on s.id=w.student_id join class_room c on c.id=s.class_id "+where,Long.class,actor,filter,filter,like,like,like);
+        return ApiResult.ok(Map.of("items",items,"total",total,"page",current,"pageSize",size));
     }
     @GetMapping("/{id}") Map<String,Object> detail(@PathVariable long id,HttpServletRequest request){
         var warning=owned(id,request,false);
         var events=db.query("select a.id,a.action,a.summary,a.created_at,u.display_name from audit_log a left join sys_user u on u.id=a.actor_id where a.entity_type='warning_record' and a.entity_id=? and a.action in ('TRIAGE','CLOSE') order by a.id",(rs,n)->Map.of("id",rs.getLong("id"),"action",rs.getString("action"),"note",rs.getString("summary"),"createdAt",rs.getTimestamp("created_at").toString(),"actor",Objects.toString(rs.getString("display_name"),"教师")),id);
-        return ok(Map.of("warning",warning,"events",events));
+        return ApiResult.ok(Map.of("warning",warning,"events",events));
     }
     @PostMapping("/{id}/triage") @Transactional
     Map<String,Object> triage(@PathVariable long id,@Valid @RequestBody Review review,HttpServletRequest request){
         var warning=owned(id,request,true);checkStatus(warning,review);
-        if(!"OPEN".equals(warning.get("status")))throw new ResponseStatusException(HttpStatus.CONFLICT,"该预警已研判，不能重复提交");
-        db.update("update warning_record set status='REVIEWED',teacher_note=?,level=? where id=?",review.note().trim(),review.escalate()?"MANUAL":warning.get("level"),id);
-        audit(actor(request),id,"TRIAGE","教师研判："+review.note().trim());return ok(Map.of("saved",true,"status","REVIEWED"));
+        if(!WarningStatus.OPEN.name().equals(warning.get("status")))throw new ResponseStatusException(HttpStatus.CONFLICT,"该预警已研判，不能重复提交");
+        db.update("update warning_record set status=?,teacher_note=?,level=? where id=?",WarningStatus.REVIEWED.name(),review.note().trim(),review.escalate()?WarningLevel.MANUAL.name():warning.get("level"),id);
+        audit(actor(request),id,"TRIAGE","教师研判："+review.note().trim());return ApiResult.ok(Map.of("saved",true,"status",WarningStatus.REVIEWED.name()));
     }
     @PostMapping("/{id}/close") @Transactional
     Map<String,Object> close(@PathVariable long id,@Valid @RequestBody Review review,HttpServletRequest request){
         var warning=owned(id,request,true);checkStatus(warning,review);
-        db.update("update warning_record set status='CLOSED',closed_at=now() where id=?",id);
-        audit(actor(request),id,"CLOSE","关闭原因："+review.note().trim());return ok(Map.of("saved",true,"status","CLOSED"));
+        db.update("update warning_record set status=?,closed_at=now() where id=?",WarningStatus.CLOSED.name(),id);
+        audit(actor(request),id,"CLOSE","关闭原因："+review.note().trim());return ApiResult.ok(Map.of("saved",true,"status",WarningStatus.CLOSED.name()));
     }
     private void checkStatus(Map<String,Object> warning,Review review){if(!Objects.equals(warning.get("status"),review.expectedStatus()))throw new ResponseStatusException(HttpStatus.CONFLICT,"预警状态已变化，请重新读取后处理");}
     private Map<String,Object> owned(long id,HttpServletRequest request,boolean lock){
@@ -65,5 +74,4 @@ public class WarningReviewController {
     }
     private long actor(HttpServletRequest request){Object id=request.getAttribute("userId");if(id==null)throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"请先登录");return Long.parseLong(id.toString());}
     private void audit(long actor,long id,String action,String note){db.update("insert into audit_log(actor_id,action,entity_type,entity_id,summary) values(?,?,'warning_record',?,?)",actor,action,id,note);}
-    private Map<String,Object> ok(Object data){return Map.of("code","0","message","success","data",data,"requestId",UUID.randomUUID().toString());}
 }

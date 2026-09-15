@@ -1,4 +1,4 @@
-package com.zhixiaojiang;
+package com.zhixiaojiang.auth;
 
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;

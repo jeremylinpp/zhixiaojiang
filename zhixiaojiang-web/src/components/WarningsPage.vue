@@ -157,7 +157,8 @@ onMounted(load);
             <button class="button primary dialog-done" :disabled="busy || selected.status !== 'OPEN'" >{{ busy ? '提交中…' : '提交研判' }}</button>
             <small v-if="selected.status !== 'OPEN'" class="muted">该预警已研判，不能重复提交。</small>
           </form>
-          <button class="button warning-close" :disabled="busy" @click="closeWarning">关闭预警</button>
+          <button class="button warning-close" :disabled="busy || selected.status === 'CLOSED'" @click="closeWarning">关闭预警</button>
+          <small v-if="selected.status === 'CLOSED'" class="muted">该预警已关闭，如需继续跟踪请新建帮扶方案或等待规则重新筛查。</small>
 
           <h3>AI 辅助分析</h3>
           <button class="button" :disabled="analyzing" @click="analyze">{{ analyzing ? '分析中…' : '生成辅助分析' }}</button>

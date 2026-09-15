@@ -1,5 +1,6 @@
 package com.zhixiaojiang;
 
+import com.zhixiaojiang.auth.SessionRevocationService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.Test;
