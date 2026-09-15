@@ -9,9 +9,17 @@
 ```text
 zhixiaojiang/                   Maven 聚合父工程（packaging=pom，统一 Java 版本、依赖版本与插件版本）
 ├── pom.xml                     父 POM：modules、dependencyManagement、pluginManagement
+├── docs/                       设计与排查记录
+├── scripts/                    运维与数据库脚本（人工执行，不进构建产物）
+│   ├── README.md               “谁执行就放哪”的目录判据
+│   └── db/create-app-user.sql  首次部署：建库、建账号、授权
 ├── zhixiaojiang-server/        后端子模块（Spring Boot 可执行 jar）
+│   ├── src/main/resources/     应用启动加载的 schema.sql / data.sql 等构建输入
+│   └── config/                 仅本机使用的私密配置（已 gitignore）
 └── zhixiaojiang-web/           前端工程（Vue 3 + Vite，npm 独立构建，不参与 Maven 生命周期）
 ```
+
+模块目录只保留构建输入（`src/`、`pom.xml`）与模块自身的 README：运维脚本放仓库根级 `scripts/`，应用启动要加载的 SQL 必须留在 `src/main/resources/`，两者不混放。
 
 后端命令在**仓库根目录**执行：
 
@@ -37,7 +45,7 @@ npm run dev
 
 ## 后端运行
 
-先使用管理员账号执行 [create-app-user.sql](zhixiaojiang-server/sql/create-app-user.sql)，创建独立的 `zhixiaojiang` 数据库及专用账号。脚本中的 `<DB_PASSWORD>` 需替换为你自己生成的高强度密码，并通过 `DB_PASSWORD` 环境变量或本机 `config/application-local.yml` 注入应用；仓库不保存任何口令。当前配置直接连接 Oracle 公网地址 `192.9.244.190` 的 MySQL 和 Redis 端口。
+先使用管理员账号执行 [scripts/db/create-app-user.sql](scripts/db/create-app-user.sql)，创建独立的 `zhixiaojiang` 数据库及专用账号。脚本中的 `<DB_PASSWORD>` 需替换为你自己生成的高强度密码，并通过 `DB_PASSWORD` 环境变量或本机 `config/application-local.yml` 注入应用；仓库不保存任何口令。当前配置直接连接 Oracle 公网地址 `192.9.244.190` 的 MySQL 和 Redis 端口。
 
 ```sh
 cd zhixiaojiang-server
