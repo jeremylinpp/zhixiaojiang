@@ -4,27 +4,33 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zhixiaojiang.auth.TeacherScope;
 import com.zhixiaojiang.common.util.JsonValues;
+import com.zhixiaojiang.dao.AnalysisContextDao;
 import com.zhixiaojiang.dao.AnalysisDao;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * AI 辅助分析。
  *
- * <p>送模型的只有白名单字段（成绩、出勤、行为、技能、任务），不含姓名、联系方式等身份信息；
- * 返回值必须包含摘要、证据与建议，并固定附带免责声明与「需教师确认」。模型未配置或调用异常时
- * 降级为规则模板，保证演示与日常使用不中断。
+ * <p>送模型的上下文由服务端按学生 id 组装，只包含白名单字段（成绩、出勤、行为、技能、任务），
+ * 不含姓名、学号、联系方式等身份信息；返回内容必须包含摘要、证据与建议，并固定附带免责声明
+ * 与「需教师确认」。模型未配置或调用异常时降级为规则模板，保证演示与日常使用不中断。
  */
 @Service
 public class AiAnalysisService {
     private static final List<String> WHITELIST = List.of("scores", "attendance", "behavior", "skills", "tasks");
     private static final String DISCLAIMER = "AI辅助建议，仅供教师参考";
+    /** 出勤只统计最近 30 天，避免长周期数据淹没近期变化。 */
+    private static final int ATTENDANCE_WINDOW_DAYS = 30;
 
     private final AnalysisDao analyses;
+    private final AnalysisContextDao context;
     private final TeacherScope scope;
     private final ObjectMapper json = new ObjectMapper();
     private final String aiBaseUrl;
@@ -32,8 +38,9 @@ public class AiAnalysisService {
     private final String aiApiKey;
     private final org.springframework.web.client.RestClient aiClient;
 
-    public AiAnalysisService(AnalysisDao analyses, TeacherScope scope, org.springframework.core.env.Environment env) {
+    public AiAnalysisService(AnalysisDao analyses, AnalysisContextDao context, TeacherScope scope, org.springframework.core.env.Environment env) {
         this.analyses = analyses;
+        this.context = context;
         this.scope = scope;
         this.aiBaseUrl = env.getProperty("AI_BASE_URL", "");
         this.aiModel = env.getProperty("AI_MODEL", "");
@@ -41,29 +48,50 @@ public class AiAnalysisService {
         this.aiClient = org.springframework.web.client.RestClient.builder().build();
     }
 
-    public Map<String, Object> analyze(Map<String, Object> body) {
-        long studentId = body.get("studentId") instanceof Number number ? number.longValue() : 0;
-        if (studentId > 0) scope.requireStudent(studentId);
-        Map<String, Object> result = modelAnalysis(body).orElseGet(this::template);
-        if (studentId > 0) {
-            try {
-                analyses.insert(studentId, String.valueOf(result.get("source")),
-                        JsonValues.toJson(Map.of("whitelist", String.join(",", WHITELIST))),
-                        JsonValues.toJson(result), scope.teacher());
-            } catch (RuntimeException ignored) {
-                // 分析记录写入失败不影响本次建议返回
-            }
+    /** 助手页展示的 AI 能力状态：是否接入模型、使用哪个模型、白名单字段与免责声明。 */
+    public Map<String, Object> status() {
+        Map<String, Object> status = new LinkedHashMap<>();
+        status.put("configured", modelConfigured());
+        status.put("model", modelConfigured() ? aiModel : null);
+        status.put("whitelist", WHITELIST);
+        status.put("disclaimer", DISCLAIMER);
+        status.put("requiresTeacherConfirmation", true);
+        return status;
+    }
+
+    /** 生成辅助分析：服务端组装上下文，模型不可用时返回规则模板。 */
+    public Map<String, Object> analyze(long studentId) {
+        scope.requireStudent(studentId);
+        Map<String, Object> sent = contextOf(studentId);
+        Map<String, Object> result = modelAnalysis(sent).orElseGet(this::template);
+        try {
+            analyses.insert(studentId, String.valueOf(result.get("source")), JsonValues.toJson(sent), JsonValues.toJson(result), scope.teacher());
+        } catch (RuntimeException ignored) {
+            // 分析记录写入失败不影响本次建议返回
         }
         return result;
     }
 
+    /** 按学生组装白名单上下文：只取事实类字段，不含身份信息。 */
+    private Map<String, Object> contextOf(long studentId) {
+        Map<String, Object> sent = new LinkedHashMap<>();
+        sent.put("scores", context.scores(studentId));
+        sent.put("attendance", context.attendance(studentId, LocalDate.now().minusDays(ATTENDANCE_WINDOW_DAYS)));
+        sent.put("behavior", context.behavior(studentId));
+        sent.put("skills", context.skills(studentId));
+        sent.put("tasks", context.tasks(studentId));
+        return sent;
+    }
+
+    private boolean modelConfigured() {
+        return !aiBaseUrl.isBlank() && !aiModel.isBlank() && !aiApiKey.isBlank();
+    }
+
     /** 调用模型；返回空表示未配置模型或调用失败，由调用方降级为模板。 */
-    private java.util.Optional<Map<String, Object>> modelAnalysis(Map<String, Object> body) {
-        if (aiBaseUrl.isBlank() || aiModel.isBlank() || aiApiKey.isBlank()) return java.util.Optional.empty();
+    private Optional<Map<String, Object>> modelAnalysis(Map<String, Object> sent) {
+        if (!modelConfigured()) return Optional.empty();
         try {
-            Map<String, Object> safe = new LinkedHashMap<>();
-            for (String key : WHITELIST) if (body.get(key) != null) safe.put(key, body.get(key));
-            String prompt = "请根据以下匿名成长数据输出 JSON，字段必须包含 summary、evidence、suggestions：" + JsonValues.toJson(safe);
+            String prompt = "请根据以下匿名成长数据输出 JSON，字段必须包含 summary、evidence、suggestions：" + JsonValues.toJson(sent);
             Map<String, Object> request = Map.of("model", aiModel, "temperature", 0.2,
                     "messages", List.of(
                             Map.of("role", "system", "content", "你是班主任成长分析助手，只做趋势归纳和教育建议，不做心理或医学诊断。"),
@@ -77,14 +105,14 @@ public class AiAnalysisService {
             Map<String, Object> parsed = json.readValue(content, new TypeReference<Map<String, Object>>() {
             });
             if (parsed.get("summary") == null || !(parsed.get("evidence") instanceof Collection<?>) || !(parsed.get("suggestions") instanceof Collection<?>))
-                return java.util.Optional.empty();
+                return Optional.empty();
             Map<String, Object> result = new LinkedHashMap<>(parsed);
             result.put("source", "MODEL");
             result.put("disclaimer", DISCLAIMER);
             result.put("requiresTeacherConfirmation", true);
-            return java.util.Optional.of(result);
+            return Optional.of(result);
         } catch (Exception e) {
-            return java.util.Optional.empty();
+            return Optional.empty();
         }
     }
 
