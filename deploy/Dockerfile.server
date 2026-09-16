@@ -12,8 +12,9 @@ ENV JAVA_OPTS="-Xms128m -Xmx512m -XX:+UseSerialGC -Duser.timezone=Asia/Shanghai"
 
 EXPOSE 8081
 
-# 用 bash 的 /dev/tcp 探测端口，避免为健康检查额外安装 curl
-HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+# 用 bash 的 /dev/tcp 探测端口，避免为健康检查额外安装 curl。
+# 启动窗口保持较短：nginx 需要等本容器健康后才启动，窗口过长会拖慢首次上线。
+HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=5 \
   CMD timeout 3 bash -c '</dev/tcp/127.0.0.1/8081' || exit 1
 
 ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar"]
