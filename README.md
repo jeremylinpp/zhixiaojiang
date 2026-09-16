@@ -45,21 +45,21 @@ npm run dev
 
 ## 后端运行
 
-先使用管理员账号执行 [scripts/db/create-app-user.sql](scripts/db/create-app-user.sql)，创建独立的 `zhixiaojiang` 数据库及专用账号。脚本中的 `<DB_PASSWORD>` 需替换为你自己生成的高强度密码，并通过 `DB_PASSWORD` 环境变量或本机 `config/application-local.yml` 注入应用；仓库不保存任何口令。当前配置直接连接 Oracle 公网地址 `192.9.244.190` 的 MySQL 和 Redis 端口。
+当前已将数据库迁移至京东服务器 `117.72.13.19`，前后端仍在本机运行，无需重复建库或初始化演示数据。密码通过环境变量或被忽略的 `zhixiaojiang-server/src/main/resources/application-local.yml` 注入，不应提交版本库。新环境首次建库可参考 [scripts/db/create-app-user.sql](scripts/db/create-app-user.sql)。迁移校验、访问白名单与回退说明见 [京东迁移记录](docs/jd-migration-20260916.md)。
 
 ```sh
 cd zhixiaojiang-server
-export DB_URL='jdbc:mysql://192.9.244.190:3306/zhixiaojiang?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai'
+export DB_URL='jdbc:mysql://117.72.13.19:3306/zhixiaojiang?useUnicode=true&characterEncoding=utf8&connectionTimeZone=Asia/Shanghai&forceConnectionTimeZoneToSession=true'
 export DB_USERNAME='zhixiaojiang'
 export DB_PASSWORD='<SQL 中设置的密码>'
-export REDIS_HOST='192.9.244.190'
+export REDIS_HOST='117.72.13.19'
 export REDIS_PORT='6379'
 mvn spring-boot:run
 ```
 
 也可在仓库根目录执行 `mvn -pl zhixiaojiang-server spring-boot:run`，效果相同。
 
-直连模式不会在本机监听数据库端口；应用只向 Oracle 发起出站连接。登录会话使用 HttpOnly Cookie，退出时仅在 `zhixiaojiang:` 命名空间写入撤销标记，不会清理共享 Redis，也不会修改 Oracle 上已有应用。默认演示账号为 `teacher / password`，正式使用前请替换。
+直连模式不会在本机监听数据库端口；应用向京东发起出站连接。数据库端口仅允许当前本机公网 IP，更换网络后需更新白名单。登录会话使用 HttpOnly Cookie，退出时仅在 `zhixiaojiang:` 命名空间写入撤销标记。Oracle 原库保留用于回退，不再作为当前写入库。默认演示账号为 `teacher / password`，正式使用前请替换。
 
 ## 配置与边界
 

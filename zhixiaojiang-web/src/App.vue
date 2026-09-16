@@ -99,9 +99,6 @@ onUnmounted(() => document.removeEventListener('keydown', keys));
           <img src="/favicon.svg" alt="" /> <strong>{{ t('控制台', '智小匠') }}</strong>
         </a>
       </div>
-      <nav class="top-nav" aria-label="主导航">
-        <button v-for="label in (school ? ['首页', '工作台', '学生成长', '六机任务', '帮助', '关于'] : ['主页', '控制台', '功能中心', '公告板', '文档', '关于'])" :key="label" @click="label === '学生成长' ? choose('学生档案') : label === '六机任务' ? choose('六机任务') : ['首页', '工作台', '主页', '控制台'].includes(label) ? active = '概览' : open(label)">{{ label }}</button>
-      </nav>
       <button class="search-button" @click="open('搜索')"><Search /><span>搜索</span><kbd>⌘ K</kbd></button>
       <div class="top-tools">
         <button class="icon-button notification" aria-label="通知" @click="open('通知')"><Bell /></button>

@@ -9,14 +9,14 @@ spring:
   profiles:
     default: local
   datasource:
-    url: ${DB_URL:jdbc:mysql://192.9.244.190:3306/zhixiaojiang?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
+    url: ${DB_URL:jdbc:mysql://117.72.13.19:3306/zhixiaojiang?useUnicode=true&characterEncoding=utf8&connectionTimeZone=Asia/Shanghai&forceConnectionTimeZoneToSession=true}
     username: ${DB_USERNAME:zhixiaojiang}
     password: ${DB_PASSWORD:}
     hikari:
       maximum-pool-size: 8
   data:
     redis:
-      host: ${REDIS_HOST:192.9.244.190}
+      host: ${REDIS_HOST:117.72.13.19}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
       database: ${REDIS_DATABASE:0}
