@@ -1,10 +1,12 @@
 name: Deploy
 
-# 上线流水线：默认手动触发，先在运行器上构建并测试，再上传发布包到服务器并重启容器。
+# 上线流水线：构建 → 推送镜像到国内仓库 → 服务器拉取镜像并重启容器。
 #
-# 为什么默认手动：
-#   自动上线意味着任何一次合入 main 都会直接改变线上，首次上线与故障恢复阶段先手动更稳。
-#   确认稳定后，把下面 push 触发器取消注释即可改为「合入 main 即自动上线」。
+# 为什么是「推送镜像 + 服务器拉取」而不是直接传文件：
+#   实测 GitHub 运行器到服务器的跨境上行只有 ~0.83 MB/s 且反复停顿，56 MB 发布包要一小时；
+#   而国内仓库被服务器拉取是内网级速度。因此构建产物先变成镜像放进仓库，部署只传几 KB 的编排文件。
+#
+# 默认手动触发；确认稳定后取消 push 触发器注释即可改为「合入 main 自动上线」。
 on:
   workflow_dispatch:
     inputs:
@@ -24,14 +26,79 @@ concurrency:
 
 jobs:
   build:
-    # 回滚路径（提供 image_tag）不需要重新构建
+    # 回滚路径不需要重新构建
     if: inputs.image_tag == ''
     uses: ./.github/workflows/build.yml
 
-  deploy:
-    name: 上传并重启线上容器
+  images:
+    name: 构建并推送镜像
     needs: [build]
-    if: always() && needs.build.result != 'failure' && needs.build.result != 'cancelled'
+    if: always() && inputs.image_tag == '' && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY: ${{ vars.REGISTRY }}
+      REGISTRY_NAMESPACE: ${{ vars.REGISTRY_NAMESPACE }}
+    steps:
+      - name: 校验仓库配置
+        run: |
+          set -euo pipefail
+          test -n "$REGISTRY" || { echo "缺少仓库变量 REGISTRY（例如 registry.cn-hangzhou.aliyuncs.com）"; exit 1; }
+          test -n "$REGISTRY_NAMESPACE" || { echo "缺少仓库变量 REGISTRY_NAMESPACE（命名空间）"; exit 1; }
+
+      - uses: actions/checkout@v4
+
+      - name: 下载后端 jar
+        uses: actions/download-artifact@v4
+        with:
+          name: zhixiaojiang-server-jar
+          path: build/server
+
+      - name: 下载前端产物
+        uses: actions/download-artifact@v4
+        with:
+          name: zhixiaojiang-web-dist
+          path: build/web/dist
+
+      - name: 组装镜像上下文
+        run: |
+          set -euo pipefail
+          mv build/server/zhixiaojiang-server-*.jar build/server/app.jar
+          cp deploy/Dockerfile.server build/server/Dockerfile
+          cp deploy/Dockerfile.web build/web/Dockerfile
+          cp deploy/nginx.conf build/web/nginx.conf
+          ls -la build/server build/web
+
+      - name: 登录镜像仓库
+        env:
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$REGISTRY_USERNAME" && test -n "$REGISTRY_PASSWORD" || { echo "缺少 REGISTRY_USERNAME / REGISTRY_PASSWORD"; exit 1; }
+          printf '%s' "$REGISTRY_PASSWORD" | docker login "$REGISTRY" -u "$REGISTRY_USERNAME" --password-stdin
+
+      - name: 构建并推送两个镜像
+        run: |
+          set -euo pipefail
+          app="$REGISTRY/$REGISTRY_NAMESPACE/zhixiaojiang-app"
+          web="$REGISTRY/$REGISTRY_NAMESPACE/zhixiaojiang-web"
+          for tag in "${{ github.sha }}" latest; do
+            docker build -t "$app:$tag" build/server
+            docker build -t "$web:$tag" build/web
+            docker push "$app:$tag"
+            docker push "$web:$tag"
+          done
+          {
+            echo "### 镜像已推送"
+            echo ""
+            echo "- \`$app:${{ github.sha }}\`"
+            echo "- \`$web:${{ github.sha }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    name: 服务器拉取并重启
+    needs: [build, images]
+    if: always() && (inputs.image_tag != '' || needs.images.result == 'success')
     runs-on: ubuntu-latest
     steps:
       - name: 校验确认输入
@@ -42,32 +109,26 @@ jobs:
 
       - uses: actions/checkout@v4
 
-      - name: 下载后端 jar
-        if: inputs.image_tag == ''
-        uses: actions/download-artifact@v4
-        with:
-          name: zhixiaojiang-server-jar
-          path: release/build/server
-
-      - name: 下载前端产物
-        if: inputs.image_tag == ''
-        uses: actions/download-artifact@v4
-        with:
-          name: zhixiaojiang-web-dist
-          path: release/build/web/dist
-
-      # 发布包结构镜像服务器上的 /opt/zhixiaojiang，服务器解包即用
-      - name: 组装发布包（含 Dockerfile、nginx 配置与编排文件）
-        if: inputs.image_tag == ''
+      # 只上传编排文件与一份记录镜像地址的 .env（几 KB），不再传构建产物
+      - name: 生成部署参数文件
         run: |
           set -euo pipefail
-          mv release/build/server/zhixiaojiang-server-*.jar release/build/server/app.jar
-          cp deploy/Dockerfile.server release/build/server/Dockerfile
-          cp deploy/Dockerfile.web release/build/web/Dockerfile
-          cp deploy/nginx.conf release/build/web/nginx.conf
+          tag="${{ inputs.image_tag }}"
+          if [ -z "$tag" ]; then
+            app="${{ vars.REGISTRY }}/${{ vars.REGISTRY_NAMESPACE }}/zhixiaojiang-app:${{ github.sha }}"
+            web="${{ vars.REGISTRY }}/${{ vars.REGISTRY_NAMESPACE }}/zhixiaojiang-web:${{ github.sha }}"
+          else
+            app="${{ vars.REGISTRY }}/${{ vars.REGISTRY_NAMESPACE }}/zhixiaojiang-app:$tag"
+            web="${{ vars.REGISTRY }}/${{ vars.REGISTRY_NAMESPACE }}/zhixiaojiang-web:$tag"
+          fi
+          mkdir -p release
           cp deploy/docker-compose.yml release/docker-compose.yml
-          cp deploy/app.env.example release/app.env.example
-          find release -maxdepth 3 -type f | sort | head -20
+          {
+            echo "IMAGE_TAG=$tag"
+            echo "APP_IMAGE=$app"
+            echo "WEB_IMAGE=$web"
+          } > release/.env
+          cat release/.env
 
       - name: 配置 SSH
         env:
@@ -82,37 +143,22 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -o ConnectTimeout=10 -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
-      # 服务器未安装 rsync，用 tar over ssh 传输：先清空 build 目录避免残留旧文件，
-      # 且只解开 build/、docker-compose.yml 与 app.env.example，绝不覆盖服务器上的 app.env
-      - name: 上传发布包到服务器
-        if: inputs.image_tag == ''
+      - name: 上传编排文件（仅几 KB）
         env:
           DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
           DEPLOY_USER: ${{ vars.DEPLOY_USER }}
         run: |
           set -euo pipefail
           target="$DEPLOY_USER@$DEPLOY_HOST"
-          ssh -o ConnectTimeout=10 "$target" 'rm -rf /opt/zhixiaojiang/build'
-          # macOS 自托管运行器上 tar 会写入 ._ 资源叉文件，这里关掉
           COPYFILE_DISABLE=1 tar -C release -czf - . | ssh -o ConnectTimeout=10 "$target" 'tar -xzf - -C /opt/zhixiaojiang'
-          ssh "$target" 'ls -la /opt/zhixiaojiang /opt/zhixiaojiang/build/server'
 
-      - name: 构建镜像并重启容器
+      - name: 拉取镜像并重启容器
         env:
           DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
           DEPLOY_USER: ${{ vars.DEPLOY_USER }}
         run: |
           set -euo pipefail
-          tag="${{ inputs.image_tag }}"
-          if [ -z "$tag" ]; then
-            tag="${{ github.sha }}"
-            ssh -o ConnectTimeout=10 "$DEPLOY_USER@$DEPLOY_HOST" "cd /opt/zhixiaojiang && IMAGE_TAG=$tag docker compose up -d --build"
-          else
-            # 回滚：直接使用服务器上已存在的旧镜像，不重新构建
-            echo "回滚到镜像标签 $tag"
-            ssh -o ConnectTimeout=10 "$DEPLOY_USER@$DEPLOY_HOST" "cd /opt/zhixiaojiang && IMAGE_TAG=$tag docker compose up -d"
-          fi
-          ssh -o ConnectTimeout=10 "$DEPLOY_USER@$DEPLOY_HOST" "cd /opt/zhixiaojiang && docker compose ps"
+          ssh -o ConnectTimeout=10 "$DEPLOY_USER@$DEPLOY_HOST" 'cd /opt/zhixiaojiang && docker compose pull && docker compose up -d && docker compose ps'
 
       - name: 健康检查（在服务器内网探测）
         env:
@@ -126,7 +172,7 @@ jobs:
             fi
             echo "第 $attempt 次探测未就绪，等待 5 秒…"; sleep 5
           done
-          echo "健康检查失败，最近日志："; ssh "$DEPLOY_USER@$DEPLOY_HOST" 'cd /opt/zhixiaojiang && docker compose logs --tail=50 app'
+          echo "健康检查失败，最近日志："; ssh -o ConnectTimeout=10 "$DEPLOY_USER@$DEPLOY_HOST" 'cd /opt/zhixiaojiang && docker compose logs --tail=50 app'
           exit 1
 
       - name: 输出部署摘要
@@ -136,7 +182,6 @@ jobs:
             echo "### 部署完成"
             echo ""
             echo "- 镜像标签：\`${{ inputs.image_tag || github.sha }}\`"
-            echo "- 提交：\`${{ github.sha }}\`"
             echo "- 访问入口：\`http://${{ vars.DEPLOY_HOST }}/\`"
             echo "- 回滚：重新触发本流水线，image_tag 填上一个成功的 SHA"
           } >> "$GITHUB_STEP_SUMMARY"

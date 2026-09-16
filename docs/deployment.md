@@ -9,7 +9,8 @@
 GitHub Actions（ubuntu-latest）
   ├─ backend  : mvn verify（隔离 H2 测试）→ 可执行 jar
   ├─ frontend : npm ci + npm run build（类型检查）→ dist（同源 /api）
-  └─ deploy   : tar over ssh 上传发布包 → docker compose up -d --build → 内网健康检查
+  └─ images   : 构建两个镜像并推送到国内仓库（阿里云 ACR 等）
+  └─ deploy   : 只上传编排文件与 .env（几 KB）→ 服务器 docker compose pull → 重启 → 内网健康检查
                      │
         ┌────────────┴─────────────────────────────────────────┐
         │ 京东服务器 117.72.13.19                              │
@@ -24,6 +25,10 @@ GitHub Actions（ubuntu-latest）
         │     zhixiaojiang-web  nginx: 静态页面 + /api 反代      │
         └──────────────────────────────────────────────────────┘
 ```
+
+为什么走镜像仓库而不是直接传文件：实测 GitHub 运行器到服务器的跨境上行只有 ~0.83 MB/s 且反复停顿
+（56 MB 发布包需要约一小时），而国内仓库被服务器拉取是内网级速度。因此构建产物先变成镜像进仓库，
+部署只传几 KB。
 
 要点：
 
@@ -73,7 +78,27 @@ ssh root@117.72.13.19 'cat >> /root/.ssh/authorized_keys' < ~/.ssh/zhixiaojiang_
 | Variable | `DEPLOY_HOST` | `117.72.13.19` |
 | Variable | `DEPLOY_USER` | `root`（如需更小权限，可建专用用户并加入 docker 组） |
 
-### 3. 放通访问端口
+### 3. 准备镜像仓库（国内，推荐阿里云 ACR）
+
+1. 在容器镜像服务控制台创建**命名空间**（例如 `zhixiaojiang`）与两个**私有仓库**：
+   `zhixiaojiang-app`、`zhixiaojiang-web`；
+2. 设置**访问凭证**（固定密码），并在仓库 `Settings → Secrets and variables` 中添加：
+
+| 类型 | 名称 | 示例 |
+| --- | --- | --- |
+| Variable | `REGISTRY` | `registry.cn-hangzhou.aliyuncs.com` |
+| Variable | `REGISTRY_NAMESPACE` | `zhixiaojiang` |
+| Secret | `REGISTRY_USERNAME` | ACR 用户名 |
+| Secret | `REGISTRY_PASSWORD` | ACR 访问凭证密码 |
+
+3. 在服务器上登录一次，使拉取私有镜像可用（凭据保存在 root 的 docker 配置中）：
+
+```sh
+ssh root@117.72.13.19
+docker login registry.cn-hangzhou.aliyuncs.com -u <用户名>
+```
+
+### 4. 放通访问端口
 
 服务器的 `DOCKER-USER` 规则目前只限制 3306/6379，80 端口默认可用；还需在**京东云安全组**放通 80。
 
@@ -89,7 +114,8 @@ GitHub → Actions → Deploy → Run workflow
   image_tag : 留空 = 构建并部署当前提交；填上一次成功的 SHA = 回滚
 ```
 
-部署过程：构建 → 测试 → 上传发布包 → `docker compose up -d --build` → 内网健康检查
+部署过程：构建 → 测试 → 推送镜像（`:SHA` 与 `:latest`）→ 上传编排文件与 `.env` →
+服务器 `docker compose pull && docker compose up -d` → 内网健康检查
 （服务器上探测 `http://127.0.0.1/api/v1/auth/csrf`，最多重试 12 次；服务器未装 rsync，故用 tar over ssh）。失败时流水线打印 app 容器最近 50 行日志。
 
 服务器侧常用命令：
@@ -100,7 +126,8 @@ docker compose ps                     # 容器状态与健康
 docker compose logs -f --tail=100 app # 后端日志
 docker compose logs -f --tail=100 web # nginx 日志
 IMAGE_TAG=<旧SHA> docker compose up -d   # 手动回滚到已存在的旧镜像
-docker images | grep zhixiaojiang      # 可用镜像标签（按提交 SHA）
+docker images | grep zhixiaojiang      # 本地镜像标签
+cat .env                              # 当前生效的镜像地址与标签
 ```
 
 自动上线：确认稳定后，把 `.github/workflows/deploy.yml` 里 `push` 触发器取消注释，
@@ -119,5 +146,6 @@ docker images | grep zhixiaojiang      # 可用镜像标签（按提交 SHA）
 ## 尚未包含
 
 - 未做数据库迁移工具（当前表结构由 `schema.sql` 维护，且线上库禁止重新初始化）；
-- 未做镜像仓库与多实例发布（当前在服务器本地构建，单实例，可用旧镜像标签回滚）；
-- 未接入监控告警（仅容器 `restart: unless-stopped` 与健康检查）。
+- 未做多实例与灰度发布（单实例，回滚依赖仓库中的旧镜像标签）；
+- 未接入监控告警（仅容器 `restart: unless-stopped` 与健康检查）；
+- 未做镜像瘦身（应用镜像含 294 MB 的 JRE 基础镜像，可换更小的基础镜像缩短推送时间）。

@@ -1,8 +1,10 @@
 # 智小匠上线编排：应用容器 + nginx 前端，复用服务器上已有的 MySQL/Redis 容器。
 #
 # 使用方式（在服务器 /opt/zhixiaojiang 目录）：
-#   IMAGE_TAG=<commit-sha> docker compose up -d --build   # 首次或升级
-#   docker compose ps && docker compose logs -f app       # 查看状态与日志
+#   流水线部署：由 Deploy 流水线写好 .env 后执行 docker compose pull && docker compose up -d
+#   手工部署：  IMAGE_TAG=<sha> docker compose up -d --build   # 用本地发布包构建
+#   查看状态：  docker compose ps && docker compose logs -f app
+#   回滚：      改 .env 里的 IMAGE_TAG 或 APP_IMAGE/WEB_IMAGE 后 docker compose up -d
 #
 # 关键约束：
 #   - DB_INIT_MODE 固定为 never：现有 22 张表与数据必须保留，绝不重新初始化演示数据；
@@ -12,7 +14,8 @@ name: zhixiaojiang
 
 services:
   app:
-    image: zhixiaojiang-app:${IMAGE_TAG:-local}
+    # 默认使用本地构建的镜像；流水线部署时通过同目录 .env 传入 APP_IMAGE（国内仓库地址）
+    image: ${APP_IMAGE:-zhixiaojiang-app:${IMAGE_TAG:-local}}
     build:
       context: ./build/server
     env_file:
@@ -36,7 +39,7 @@ services:
       options: {max-size: "10m", max-file: "3"}
 
   web:
-    image: zhixiaojiang-web:${IMAGE_TAG:-local}
+    image: ${WEB_IMAGE:-zhixiaojiang-web:${IMAGE_TAG:-local}}
     build:
       context: ./build/web
     ports:
