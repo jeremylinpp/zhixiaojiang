@@ -9,7 +9,7 @@
 GitHub Actions（ubuntu-latest）
   ├─ backend  : mvn verify（隔离 H2 测试）→ 可执行 jar
   ├─ frontend : npm ci + npm run build（类型检查）→ dist（同源 /api）
-  └─ deploy   : rsync 发布包 → ssh 执行 docker compose up -d --build → 内网健康检查
+  └─ deploy   : tar over ssh 上传发布包 → docker compose up -d --build → 内网健康检查
                      │
         ┌────────────┴─────────────────────────────────────────┐
         │ 京东服务器 117.72.13.19                              │
@@ -45,7 +45,7 @@ ssh root@117.72.13.19
 cd /opt/zhixiaojiang
 umask 077
 # 数据库与 Redis 口令取自迁移时已配置的容器（不要重新生成，必须与容器一致）
-DB_PW=$(grep -oP '(?<=MYSQL_ROOT_PASSWORD=).*' /opt/zhixiaojiang/mysql.env | head -1)
+DB_PW=$(grep -oP '(?<=MYSQL_PASSWORD=).*' /opt/zhixiaojiang/mysql.env | head -1)
 cat > app.env <<EOF
 DB_PASSWORD=${DB_PW}
 REDIS_PASSWORD=<与 redis 容器一致的密码>
@@ -90,7 +90,7 @@ GitHub → Actions → Deploy → Run workflow
 ```
 
 部署过程：构建 → 测试 → 上传发布包 → `docker compose up -d --build` → 内网健康检查
-（探测 `http://127.0.0.1/api/v1/auth/csrf`，最多重试 12 次）。失败时流水线打印 app 容器最近 50 行日志。
+（服务器上探测 `http://127.0.0.1/api/v1/auth/csrf`，最多重试 12 次；服务器未装 rsync，故用 tar over ssh）。失败时流水线打印 app 容器最近 50 行日志。
 
 服务器侧常用命令：
 

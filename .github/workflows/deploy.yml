@@ -47,28 +47,27 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: zhixiaojiang-server-jar
-          path: release/server
+          path: release/build/server
 
       - name: 下载前端产物
         if: inputs.image_tag == ''
         uses: actions/download-artifact@v4
         with:
           name: zhixiaojiang-web-dist
-          path: release/web/dist
+          path: release/build/web/dist
 
+      # 发布包结构镜像服务器上的 /opt/zhixiaojiang，服务器解包即用
       - name: 组装发布包（含 Dockerfile、nginx 配置与编排文件）
         if: inputs.image_tag == ''
         run: |
           set -euo pipefail
-          mkdir -p release/server release/web
-          # 产物目录里可能带版本号，统一改名为 app.jar 供镜像使用
-          mv release/server/zhixiaojiang-server-*.jar release/server/app.jar
-          cp deploy/Dockerfile.server release/server/Dockerfile
-          cp deploy/Dockerfile.web release/web/Dockerfile
-          cp deploy/nginx.conf release/web/nginx.conf
+          mv release/build/server/zhixiaojiang-server-*.jar release/build/server/app.jar
+          cp deploy/Dockerfile.server release/build/server/Dockerfile
+          cp deploy/Dockerfile.web release/build/web/Dockerfile
+          cp deploy/nginx.conf release/build/web/nginx.conf
           cp deploy/docker-compose.yml release/docker-compose.yml
           cp deploy/app.env.example release/app.env.example
-          ls -R release | head -20
+          find release -maxdepth 3 -type f | sort | head -20
 
       - name: 配置 SSH
         env:
@@ -83,6 +82,8 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
+      # 服务器未安装 rsync，用 tar over ssh 传输：先清空 build 目录避免残留旧文件，
+      # 且只解开 build/、docker-compose.yml 与 app.env.example，绝不覆盖服务器上的 app.env
       - name: 上传发布包到服务器
         if: inputs.image_tag == ''
         env:
@@ -91,11 +92,9 @@ jobs:
         run: |
           set -euo pipefail
           target="$DEPLOY_USER@$DEPLOY_HOST"
-          # 只覆盖构建产物与编排文件；app.env 等运行配置始终留在服务器上，不参与上传
-          rsync -az --delete release/server/  "$target:/opt/zhixiaojiang/build/server/"
-          rsync -az --delete release/web/     "$target:/opt/zhixiaojiang/build/web/"
-          rsync -az release/docker-compose.yml "$target:/opt/zhixiaojiang/docker-compose.yml"
-          rsync -az release/app.env.example    "$target:/opt/zhixiaojiang/app.env.example"
+          ssh "$target" 'rm -rf /opt/zhixiaojiang/build'
+          tar -C release -czf - . | ssh "$target" 'tar -xzf - -C /opt/zhixiaojiang'
+          ssh "$target" 'ls -la /opt/zhixiaojiang /opt/zhixiaojiang/build/server'
 
       - name: 构建镜像并重启容器
         env:
