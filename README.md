@@ -9,17 +9,17 @@
 ```text
 zhixiaojiang/                   Maven 聚合父工程（packaging=pom，统一 Java 版本、依赖版本与插件版本）
 ├── pom.xml                     父 POM：modules、dependencyManagement、pluginManagement
-├── docs/                       设计与排查记录
+├── docs/                       设计与运维记录（含后端模块说明 README.md）
 ├── scripts/                    运维与数据库脚本（人工执行，不进构建产物）
 │   ├── README.md               “谁执行就放哪”的目录判据
 │   └── db/create-app-user.sql  首次部署：建库、建账号、授权
-├── zhixiaojiang-server/        后端子模块（Spring Boot 可执行 jar）
+├── zhixiaojiang-server/        后端子模块（Spring Boot 可执行 jar，仅保留构建输入）
 │   ├── src/main/resources/     应用启动加载的 schema.sql / data.sql 等构建输入
 │   └── config/                 仅本机使用的私密配置（已 gitignore）
 └── zhixiaojiang-web/           前端工程（Vue 3 + Vite，npm 独立构建，不参与 Maven 生命周期）
 ```
 
-模块目录只保留构建输入（`src/`、`pom.xml`）与模块自身的 README：运维脚本放仓库根级 `scripts/`，应用启动要加载的 SQL 必须留在 `src/main/resources/`，两者不混放。
+模块目录只保留构建输入（`src/`、`pom.xml`）：运维脚本放仓库根级 `scripts/`，应用启动要加载的 SQL 必须留在 `src/main/resources/`，两者不混放。后端模块说明见 [docs/README.md](docs/README.md)。
 
 后端命令在**仓库根目录**执行：
 
@@ -63,7 +63,7 @@ mvn spring-boot:run
 
 ## 配置与边界
 
-- `zhixiaojiang-server/.env.example` 仅保留变量名，不提交密码或模型密钥。
+- 本机密钥只通过环境变量（`DB_PASSWORD`、`JWT_SECRET`、`AI_API_KEY` 等）或被 gitignore 的 `zhixiaojiang-server/src/main/resources/application-local.yml` 注入，仓库不保存任何口令；变量名清单见 `docs/README.md`。
 - AI 通过 `AI_BASE_URL`、`AI_MODEL`、`AI_API_KEY` 接入；未配置或异常时返回标记为 `TEMPLATE` 的规则模板建议。
 - 演示数据使用幂等初始化，不覆盖已有记录。
 - 技术设计与数据口径见 [docs/zhixiaojiang-mvp-technical-design.md](docs/zhixiaojiang-mvp-technical-design.md)。

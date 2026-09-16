@@ -4,8 +4,8 @@
 
 ## 本地运行
 
-1. 在 Oracle 创建独立数据库 `zhixiaojiang` 和非 root 应用账号。
-2. 复制 `.env.example` 为本地环境配置并填入账号、密码和随机 JWT 密钥（也可放在被忽略的 `config/application-local.yml`）。
+1. 在 Oracle 创建独立数据库 `zhixiaojiang` 和非 root 应用账号（`scripts/db/create-app-user.sql`）。
+2. 通过环境变量或本机被忽略的 `src/main/resources/application-local.yml` 提供账号、密码与随机 JWT 密钥（变量名：`DB_URL`、`DB_USERNAME`、`DB_PASSWORD`、`JWT_SECRET`、`REDIS_HOST`、`REDIS_PORT`、`REDIS_PASSWORD`）。
 3. 确认 Oracle 防火墙/安全组允许你的本机访问 3306、6379，再启动后端：
 
 ```bash
@@ -16,15 +16,15 @@ mvn -pl zhixiaojiang-server spring-boot:run
 mvn spring-boot:run
 ```
 
-两种方式的工作目录都是 `zhixiaojiang-server`，因此 `config/application-local.yml` 与 `.env.example` 的路径不变。
+两种方式的工作目录都是 `zhixiaojiang-server`，因此本机配置文件的相对位置不变。
 
 默认连接 Oracle 公网地址 `192.9.244.190`。
 
-默认教师演示账号：`teacher` / `password`。首次启动会执行幂等 schema 和演示数据初始化。
+默认教师演示账号：`teacher` / `password`。新库首次启动前需把 `DB_INIT_MODE` 设为 `always`，执行幂等建表与演示数据初始化；初始化完成后恢复默认 `never`，避免每次启动重复初始化。
 
 启动前请设置 `DB_PASSWORD`（SQL 中创建的应用账号密码）和 `JWT_SECRET`；Redis 可通过 `REDIS_HOST`、`REDIS_PORT`、`REDIS_PASSWORD` 覆盖默认值。当前默认直连 Oracle 公网地址，应用不需要建立 SSH 隧道。退出登录只写入 `zhixiaojiang:` 前缀下的令牌撤销标记，不会清空共享 Redis。
 
-后端单元/接口冒烟测试使用隔离的 H2 `demo` profile，不会连接或清理共享 Oracle、Redis。在仓库根目录执行 `mvn test` 会聚合构建全部模块；在模块目录执行 `mvn -q test` 只构建本模块。
+后端单元/接口测试使用隔离的 H2 `demo` profile，不会连接或清理共享 Oracle、Redis，覆盖登录、学生档案、成长工作台、规则预警、积分幂等与撤销、帮扶状态流转、六机任务与班级诊改链路。在仓库根目录执行 `mvn test` 会聚合构建全部模块；在模块目录执行 `mvn -q test` 只构建本模块。
 
 ```bash
 mvn test
@@ -35,8 +35,6 @@ mvn test
 ```bash
 DB_PASSWORD='你的数据库密码' JWT_SECRET='至少 32 位随机字符串' mvn spring-boot:run
 ```
-
-后端启动后，另开终端运行仓库根目录的 `scripts/smoke-test.sh` 完成登录、学生、预警、积分、帮扶、任务和诊改链路检查。
 
 ## 已实现接口
 
