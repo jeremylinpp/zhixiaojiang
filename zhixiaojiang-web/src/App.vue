@@ -20,12 +20,6 @@ const password = ref('password');
 const loginError = ref('');
 const signingIn = ref(false);
 const csrfToken = ref('');
-const actionBusy = ref(false);
-const actionError = ref('');
-const formTitle = ref('');
-const formNote = ref('');
-const formAmount = ref(1);
-const formDate = ref('');
 const collapsed = ref(false);
 const guide = ref(true);
 const panel = ref('');
@@ -60,10 +54,11 @@ const steps = computed(() => [
   { title: t('添加额度', '开展辅助研判'), text: t('生产流量前保持充足余额', '结合数据趋势，了解学生近期状态'), icon: school.value ? Radar : CreditCard, complete: true },
   { title: t('发送请求', '制定帮扶计划'), text: t('使用 Playground 或你的客户端验证路由', '教师确认后实施，持续跟踪成长变化'), icon: school.value ? ClipboardCheck : SquareTerminal, complete: false },
 ]);
+/** 推荐操作：智小匠视图直接进入对应页面，参考复原视图仍走占位弹窗。 */
 const actions = computed(() => [
-  { title: t('访问密钥', '智能预警'), description: t('为你的应用或服务创建密钥', '查看成长趋势与待关注事项'), icon: school.value ? Radar : KeyRound },
-  { title: t('使用日志', '一人一策'), description: t('查看请求、错误和计费详情', '审核帮扶建议，记录实施过程'), icon: FileText },
-  { title: t('方案与计费', '六机任务'), description: t('扩展流量前查看模型费率', '查看活动安排与学生完成情况'), icon: BookOpen },
+  { title: t('访问密钥', '智能预警'), page: '智能预警', description: t('为你的应用或服务创建密钥', '查看成长趋势与待关注事项'), icon: school.value ? Radar : KeyRound },
+  { title: t('使用日志', '一人一策'), page: '一人一策', description: t('查看请求、错误和计费详情', '审核帮扶建议，记录实施过程'), icon: FileText },
+  { title: t('方案与计费', '六机任务'), page: '六机任务', description: t('扩展流量前查看模型费率', '查看活动安排与学生完成情况'), icon: BookOpen },
 ]);
 const stats = computed(() => [
   { label: t('近 24 小时消耗', '班级人数'), value: t('$0', String(dashboard.value.metrics?.studentCount ?? 42)), description: t('近 24 小时消耗量 (USD)', '2025 级工业机器人应用与维护班'), icon: school.value ? UsersRound : Flame, tone: 'orange' },
@@ -71,7 +66,7 @@ const stats = computed(() => [
   { label: t('请求计数', '今日出勤率'), value: t('0', dashboard.value.metrics?.activeRate == null ? '数据不足' : `${dashboard.value.metrics.activeRate}%`), description: t('总请求数', dashboard.value.metrics?.attendanceCompleteness ? `已登记 ${dashboard.value.metrics.attendanceCompleteness} 人` : '尚未完成登记'), icon: Activity, tone: 'blue' },
 ]);
 const searchResults = computed(() => groups.value.flatMap(g => g.items).filter(i => i.label.includes(query.value.trim())));
-async function open(title: string) { panel.value = title; query.value = ''; actionError.value = ''; formTitle.value = ''; formNote.value = ''; formAmount.value = 1; formDate.value = ''; await nextTick(); dialog.value?.showModal(); if (title === '搜索') dialog.value?.querySelector('input')?.focus(); }
+async function open(title: string) { panel.value = title; query.value = ''; await nextTick(); dialog.value?.showModal(); if (title === '搜索') dialog.value?.querySelector('input')?.focus(); }
 function close() { dialog.value?.close(); panel.value = ''; }
 function choose(title: string) { close(); active.value = title; }
 const pageInfo = computed(() => ({
@@ -101,9 +96,6 @@ async function loadPage() {
     if (requestedPage === '班级诊改') { const d = await apiGet('/class-diagnoses'); pageRows.value[requestedPage] = (d.items || []).map((x:any) => [x.name, `${x.currentValue}%`, `${x.targetValue}%`, `${x.deviation > 0 ? '+' : ''}${x.deviation}%`]); }
   } catch { liveError.value = '后端暂时不可用，当前页面保留演示数据'; }
 }
-async function runWarningAnalysis() { try { if (!csrfToken.value) await loadCsrf(); const res = await fetch(`${apiBase}/warnings/analyze`, { method: 'POST', credentials: 'include', headers: csrfToken.value ? {'X-CSRF-TOKEN': csrfToken.value} : {} }); if (!res.ok) throw new Error(); const body = await res.json(); await loadPage(); panel.value = `规则分析完成 · ${body.data?.created ?? 0} 条新增`; await nextTick(); dialog.value?.showModal(); } catch { panel.value = '规则分析暂不可用'; await nextTick(); dialog.value?.showModal(); } }
-async function saveAction() { actionBusy.value = true; actionError.value = ''; try { if (!csrfToken.value) await loadCsrf(); const headers: Record<string,string> = {'Content-Type':'application/json'}; if (csrfToken.value) headers['X-CSRF-TOKEN'] = csrfToken.value; let path = ''; let body: Record<string,unknown> = {}; if (panel.value === '新增学生') { path='/students'; body={name:formTitle.value||'未命名学生',gender:formNote.value||undefined}; } else if (panel.value === '新增积分记录') { path='/points'; body={studentId:1,amount:Number(formAmount.value),category:'MANUAL',reason:formNote.value||'教师手工调整',idempotencyKey:`web-${Date.now()}`}; } else if (panel.value === '发布成长任务') { path='/growth-tasks'; body={module:'聚机力',title:formTitle.value||'班级成长任务',description:formNote.value,dueOn:formDate.value||undefined,pointReward:Number(formAmount.value)}; } else if (panel.value === '新增诊改目标') { path='/class-diagnoses'; body={name:formTitle.value||'班级成长目标',targetValue:Number(formAmount.value),currentValue:0,unit:'%'}; } else if (panel.value === '生成帮扶方案') { path='/interventions'; body={studentId:1,title:formTitle.value||'阶段成长支持方案',teacherNote:formNote.value}; } else { path='/students/1/growth'; body={dimension:'SMART',score:Number(formAmount.value),title:formTitle.value||'教师成长记录',detail:formNote.value,occurredOn:formDate.value||undefined,source:'教师录入'}; } const res = await fetch(`${apiBase}${path}`,{method:'POST',credentials:'include',headers,body:JSON.stringify(body)}); if (!res.ok) throw new Error(); close(); await Promise.all([loadPage(),loadDashboard()]); } catch { actionError.value = '保存失败，请检查后端连接与表单内容'; } finally { actionBusy.value = false; } }
-function pageAction(title: string) { if (title === '智能预警') { runWarningAnalysis(); return; } open(title === '学生档案' ? '新增学生' : title === '一人一策' ? '生成帮扶方案' : title === '机智币' ? '新增积分记录' : title === '六机任务' ? '发布成长任务' : title === '班级诊改' ? '新增诊改目标' : '新增记录'); }
 function switchView() { if (!referenceAvailable) return; school.value = !school.value; active.value = '概览'; history.replaceState(null, '', school.value ? '?view=school' : '?view=reference'); }
 function keys(e: KeyboardEvent) { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); open('搜索'); } }
 async function loadDashboard() { try { const res = await fetch(`${apiBase}/dashboard/class`, { credentials: 'include' }); if (!res.ok) throw new Error('backend unavailable'); const body = await res.json(); dashboard.value = body.data ?? {}; live.value = true; } catch { liveError.value = '后端未连接，当前显示演示数据'; } }
@@ -189,7 +181,7 @@ onUnmounted(() => document.removeEventListener('keydown', keys));
             </div>
           </div>
 
-          <aside class="recommend panel"><p class="eyebrow">推荐操作</p><h2>{{ t('保持平台就绪', '关注每一步成长') }}</h2><div class="recommend-list"><button v-for="action in actions" :key="action.title" @click="open(action.title)"><span class="icon-tile"><component :is="action.icon"/></span><span><strong>{{ action.title }}</strong><small>{{ action.description }}</small></span></button></div></aside>
+          <aside class="recommend panel"><p class="eyebrow">推荐操作</p><h2>{{ t('保持平台就绪', '关注每一步成长') }}</h2><div class="recommend-list"><button v-for="action in actions" :key="action.title" @click="school ? choose(action.page) : open(action.title)"><span class="icon-tile"><component :is="action.icon"/></span><span><strong>{{ action.title }}</strong><small>{{ action.description }}</small></span></button></div></aside>
         </section>
 
         <section class="usage panel">
@@ -207,10 +199,10 @@ onUnmounted(() => document.removeEventListener('keydown', keys));
       <TasksPage v-else-if="school && active === '六机任务'" />
       <DiagnosisPage v-else-if="school && active === '班级诊改'" />
       <div v-else class="page-scroll workspace-page">
-        <div class="workspace-heading"><div><p class="eyebrow"><Sparkles/>班主任工作台</p><h1>{{ pageInfo[active]?.[0] || active }}</h1><p>{{ pageInfo[active]?.[1] || '持续记录学生成长，保持班级运行可见。' }}</p></div><button class="button primary" @click="pageAction(active)"><Sparkles/>{{ active === '智能预警' ? '执行规则分析' : active === '学生档案' ? '新增学生' : active === '一人一策' ? '生成帮扶方案' : active === '机智币' ? '新增积分记录' : active === '六机任务' ? '发布成长任务' : active === '班级诊改' ? '新增诊改目标' : '新增记录' }}</button></div>
+        <div class="workspace-heading"><div><p class="eyebrow"><Sparkles/>班主任工作台</p><h1>{{ pageInfo[active]?.[0] || active }}</h1><p>{{ pageInfo[active]?.[1] || '持续记录学生成长，保持班级运行可见。' }}</p></div></div>
         <div class="workspace-toolbar"><label class="inline-search"><Search/><input v-model="pageSearch" placeholder="搜索当前页面"/><kbd>⌘ K</kbd></label><span class="result-count">{{ rowsForActive.length }} 条记录 · {{ live ? '已连接 Oracle' : '演示数据' }}</span></div>
         <section class="data-card panel"><table><thead><tr><th v-for="head in (pageInfo[active]?.[2] || [])" :key="head">{{ head }}</th><th>操作</th></tr></thead><tbody><tr v-for="row in rowsForActive" :key="row.join('-')"><td v-for="cell in row" :key="cell"><span v-if="cell === '重点关注'" class="status-chip danger">{{ cell }}</span><span v-else-if="cell === '关注' || cell === '待研判'" class="status-chip warning">{{ cell }}</span><span v-else-if="cell === '正常' || cell === '已关闭' || cell === '可用'" class="status-chip success">{{ cell }}</span><span v-else>{{ cell }}</span></td><td><button class="table-action" @click="open(row[0] || active)">查看详情 <ArrowRight/></button></td></tr><tr v-if="!rowsForActive.length"><td :colspan="(pageInfo[active]?.[2]?.length || 1) + 1" class="empty-cell">暂无记录</td></tr></tbody></table></section>
-        <section class="workspace-note panel"><span class="icon-tile orange"><ShieldCheck/></span><div><strong>数据口径提示</strong><p>{{ active === '智能预警' ? '预警来自规则筛查，最终判断由班主任完成。' : active === '机智币' ? '积分记录独立于四维评价，撤销会生成反向流水。' : '页面数据会在保存后写入 MySQL，并保留操作者与时间记录。' }}</p></div></section>
+        <section class="workspace-note panel"><span class="icon-tile orange"><ShieldCheck/></span><div><strong>数据口径提示</strong><p>{{ active === '智小匠助手' ? '该页为能力入口说明，尚未接入真实业务；其余页面均读写真实数据并保留操作者与时间记录。' : '页面数据来自真实接口，写入后保留操作者与时间记录。' }}</p></div></section>
       </div>
     </main>
 
@@ -219,7 +211,6 @@ onUnmounted(() => document.removeEventListener('keydown', keys));
       <template v-if="panel === '搜索'"><label class="dialog-search"><Search/><input v-model="query" autofocus placeholder="搜索页面与操作" aria-label="搜索页面与操作"/></label><div class="search-results"><button v-for="result in searchResults" :key="result.label" @click="choose(result.label)"><component :is="result.icon"/>{{ result.label }}<ArrowRight/></button><p v-if="!searchResults.length" class="muted">没有找到匹配页面</p></div></template>
       <template v-else-if="panel === '视觉版本'"><p class="dialog-description">{{ referenceAvailable ? '相同的布局、字体和组件，查看两种内容版本。' : '生产构建固定使用智小匠业务视图，参考对照仅在本地开发可用。' }}</p><button v-if="referenceAvailable" class="version-choice" @click="school = false; close()"><Palette/>参考复原<Check v-if="!school"/></button><button class="version-choice" @click="school = true; close()"><GraduationCap/>智小匠<Check v-if="school"/></button></template>
       <template v-else-if="panel === '通知'"><div class="notice-row"><span class="mini-icon orange"><Palette/></span><div><strong>视觉复原预览已就绪</strong><p>顶部调色板可切换参考版与智小匠版。</p></div></div><div class="notice-row"><span class="mini-icon blue"><ShieldCheck/></span><div><strong>数据连接状态</strong><p>{{ live ? '已连接 Oracle 数据服务。' : '当前使用演示数据，保存操作需要后端在线。' }}</p></div></div></template>
-      <template v-else-if="['新增学生','新增积分记录','发布成长任务','新增诊改目标','生成帮扶方案','新增记录'].includes(panel)"><form class="action-form" @submit.prevent="saveAction"><label v-if="panel === '新增学生'">姓名<input v-model="formTitle" required placeholder="请输入学生姓名"/></label><label v-else-if="panel !== '新增积分记录'">标题<input v-model="formTitle" required placeholder="请输入标题"/></label><label v-if="panel === '新增学生'">性别（可选）<input v-model="formNote" placeholder="男 / 女"/></label><label v-else-if="panel === '新增积分记录'">积分变化<input v-model.number="formAmount" type="number" required /></label><label v-if="panel === '新增诊改目标'">目标值（%）<input v-model.number="formAmount" type="number" min="0" max="100" required /></label><label v-if="panel === '新增记录'">评分（0–100）<input v-model.number="formAmount" type="number" min="0" max="100" required /></label><label v-if="panel === '发布成长任务' || panel === '新增记录'">日期<input v-model="formDate" type="date" /></label><label v-if="!['新增诊改目标','新增学生'].includes(panel)">说明<textarea v-model="formNote" rows="3" placeholder="补充说明（可选）"></textarea></label><p v-if="actionError" class="login-error">{{ actionError }}</p><button class="button primary dialog-done" :disabled="actionBusy">{{ actionBusy ? '保存中…' : '保存记录' }}</button></form></template>
       <template v-else><div class="placeholder-icon"><component :is="school ? GraduationCap : LayoutDashboard"/></div><p class="dialog-description">这是「{{ panel }}」的操作入口。保存后将由后端写入 MySQL，并保留操作者与时间记录。</p><button class="button primary dialog-done" @click="close">返回概览</button></template>
     </dialog>
   </div>
