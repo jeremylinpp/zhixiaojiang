@@ -80,7 +80,7 @@ jobs:
           install -m 700 -d ~/.ssh
           printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh-keyscan -o ConnectTimeout=10 -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
       # 服务器未安装 rsync，用 tar over ssh 传输：先清空 build 目录避免残留旧文件，
       # 且只解开 build/、docker-compose.yml 与 app.env.example，绝不覆盖服务器上的 app.env
@@ -92,8 +92,9 @@ jobs:
         run: |
           set -euo pipefail
           target="$DEPLOY_USER@$DEPLOY_HOST"
-          ssh "$target" 'rm -rf /opt/zhixiaojiang/build'
-          tar -C release -czf - . | ssh "$target" 'tar -xzf - -C /opt/zhixiaojiang'
+          ssh -o ConnectTimeout=10 "$target" 'rm -rf /opt/zhixiaojiang/build'
+          # macOS 自托管运行器上 tar 会写入 ._ 资源叉文件，这里关掉
+          COPYFILE_DISABLE=1 tar -C release -czf - . | ssh -o ConnectTimeout=10 "$target" 'tar -xzf - -C /opt/zhixiaojiang'
           ssh "$target" 'ls -la /opt/zhixiaojiang /opt/zhixiaojiang/build/server'
 
       - name: 构建镜像并重启容器
@@ -105,13 +106,13 @@ jobs:
           tag="${{ inputs.image_tag }}"
           if [ -z "$tag" ]; then
             tag="${{ github.sha }}"
-            ssh "$DEPLOY_USER@$DEPLOY_HOST" "cd /opt/zhixiaojiang && IMAGE_TAG=$tag docker compose up -d --build"
+            ssh -o ConnectTimeout=10 "$DEPLOY_USER@$DEPLOY_HOST" "cd /opt/zhixiaojiang && IMAGE_TAG=$tag docker compose up -d --build"
           else
             # 回滚：直接使用服务器上已存在的旧镜像，不重新构建
             echo "回滚到镜像标签 $tag"
-            ssh "$DEPLOY_USER@$DEPLOY_HOST" "cd /opt/zhixiaojiang && IMAGE_TAG=$tag docker compose up -d"
+            ssh -o ConnectTimeout=10 "$DEPLOY_USER@$DEPLOY_HOST" "cd /opt/zhixiaojiang && IMAGE_TAG=$tag docker compose up -d"
           fi
-          ssh "$DEPLOY_USER@$DEPLOY_HOST" "cd /opt/zhixiaojiang && docker compose ps"
+          ssh -o ConnectTimeout=10 "$DEPLOY_USER@$DEPLOY_HOST" "cd /opt/zhixiaojiang && docker compose ps"
 
       - name: 健康检查（在服务器内网探测）
         env:
@@ -120,7 +121,7 @@ jobs:
         run: |
           set -euo pipefail
           for attempt in $(seq 1 12); do
-            if ssh "$DEPLOY_USER@$DEPLOY_HOST" 'curl -fsS -m 5 http://127.0.0.1/api/v1/auth/csrf >/dev/null'; then
+            if ssh -o ConnectTimeout=10 "$DEPLOY_USER@$DEPLOY_HOST" 'curl -fsS -m 5 http://127.0.0.1/api/v1/auth/csrf >/dev/null'; then
               echo "第 $attempt 次探测：应用已就绪 ✅"; exit 0
             fi
             echo "第 $attempt 次探测未就绪，等待 5 秒…"; sleep 5
