@@ -1,0 +1,70 @@
+name: CI
+
+# 持续集成：每次推送到 main、每个 PR、以及手动触发时，验证后端测试与前端构建。
+# 这里只做构建与测试，不接触任何服务器，也不读取任何生产口令。
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# 同一分支上的新提交会取消上一次未完成的运行，避免排队浪费额度。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: 后端测试与打包
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 JDK 17 并缓存 Maven 仓库
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      # verify = 编译 + 隔离 H2 测试 + 生成可执行 jar；测试不依赖外部 MySQL/Redis。
+      - name: 运行测试并打包
+        run: mvn -B -ntp verify
+
+      - name: 上传后端 jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: zhixiaojiang-server-jar
+          path: zhixiaojiang-server/target/zhixiaojiang-server-*.jar
+          if-no-files-found: error
+          retention-days: 14
+
+  frontend:
+    name: 前端类型检查与构建
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Node 22 并缓存 npm
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: zhixiaojiang-web/package-lock.json
+
+      - name: 安装依赖
+        run: npm ci
+        working-directory: zhixiaojiang-web
+
+      # build = vue-tsc 类型检查 + vite 构建
+      - name: 类型检查与构建
+        run: npm run build
+        working-directory: zhixiaojiang-web
+
+      - name: 上传前端产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: zhixiaojiang-web-dist
+          path: zhixiaojiang-web/dist
+          if-no-files-found: error
+          retention-days: 14
