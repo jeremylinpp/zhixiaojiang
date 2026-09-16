@@ -1,0 +1,142 @@
+name: Deploy
+
+# 上线流水线：默认手动触发，先在运行器上构建并测试，再上传发布包到服务器并重启容器。
+#
+# 为什么默认手动：
+#   自动上线意味着任何一次合入 main 都会直接改变线上，首次上线与故障恢复阶段先手动更稳。
+#   确认稳定后，把下面 push 触发器取消注释即可改为「合入 main 即自动上线」。
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: '确认执行上线：请输入 deploy'
+        required: true
+      image_tag:
+        description: '回滚用：填上一次成功部署的 commit SHA（留空则构建并部署当前提交）'
+        required: false
+        default: ''
+#  push:
+#    branches: [main]
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  build:
+    # 回滚路径（提供 image_tag）不需要重新构建
+    if: inputs.image_tag == ''
+    uses: ./.github/workflows/build.yml
+
+  deploy:
+    name: 上传并重启线上容器
+    needs: [build]
+    if: always() && needs.build.result != 'failure' && needs.build.result != 'cancelled'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 校验确认输入
+        run: |
+          if [ "${{ inputs.confirm }}" != "deploy" ]; then
+            echo "未输入 deploy，已取消。"; exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: 下载后端 jar
+        if: inputs.image_tag == ''
+        uses: actions/download-artifact@v4
+        with:
+          name: zhixiaojiang-server-jar
+          path: release/server
+
+      - name: 下载前端产物
+        if: inputs.image_tag == ''
+        uses: actions/download-artifact@v4
+        with:
+          name: zhixiaojiang-web-dist
+          path: release/web/dist
+
+      - name: 组装发布包（含 Dockerfile、nginx 配置与编排文件）
+        if: inputs.image_tag == ''
+        run: |
+          set -euo pipefail
+          mkdir -p release/server release/web
+          # 产物目录里可能带版本号，统一改名为 app.jar 供镜像使用
+          mv release/server/zhixiaojiang-server-*.jar release/server/app.jar
+          cp deploy/Dockerfile.server release/server/Dockerfile
+          cp deploy/Dockerfile.web release/web/Dockerfile
+          cp deploy/nginx.conf release/web/nginx.conf
+          cp deploy/docker-compose.yml release/docker-compose.yml
+          cp deploy/app.env.example release/app.env.example
+          ls -R release | head -20
+
+      - name: 配置 SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_SSH_KEY" || { echo "缺少 DEPLOY_SSH_KEY 仓库密钥"; exit 1; }
+          test -n "$DEPLOY_HOST" || { echo "缺少 DEPLOY_HOST 仓库变量"; exit 1; }
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: 上传发布包到服务器
+        if: inputs.image_tag == ''
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          target="$DEPLOY_USER@$DEPLOY_HOST"
+          # 只覆盖构建产物与编排文件；app.env 等运行配置始终留在服务器上，不参与上传
+          rsync -az --delete release/server/  "$target:/opt/zhixiaojiang/build/server/"
+          rsync -az --delete release/web/     "$target:/opt/zhixiaojiang/build/web/"
+          rsync -az release/docker-compose.yml "$target:/opt/zhixiaojiang/docker-compose.yml"
+          rsync -az release/app.env.example    "$target:/opt/zhixiaojiang/app.env.example"
+
+      - name: 构建镜像并重启容器
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          tag="${{ inputs.image_tag }}"
+          if [ -z "$tag" ]; then
+            tag="${{ github.sha }}"
+            ssh "$DEPLOY_USER@$DEPLOY_HOST" "cd /opt/zhixiaojiang && IMAGE_TAG=$tag docker compose up -d --build"
+          else
+            # 回滚：直接使用服务器上已存在的旧镜像，不重新构建
+            echo "回滚到镜像标签 $tag"
+            ssh "$DEPLOY_USER@$DEPLOY_HOST" "cd /opt/zhixiaojiang && IMAGE_TAG=$tag docker compose up -d"
+          fi
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" "cd /opt/zhixiaojiang && docker compose ps"
+
+      - name: 健康检查（在服务器内网探测）
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 12); do
+            if ssh "$DEPLOY_USER@$DEPLOY_HOST" 'curl -fsS -m 5 http://127.0.0.1/api/v1/auth/csrf >/dev/null'; then
+              echo "第 $attempt 次探测：应用已就绪 ✅"; exit 0
+            fi
+            echo "第 $attempt 次探测未就绪，等待 5 秒…"; sleep 5
+          done
+          echo "健康检查失败，最近日志："; ssh "$DEPLOY_USER@$DEPLOY_HOST" 'cd /opt/zhixiaojiang && docker compose logs --tail=50 app'
+          exit 1
+
+      - name: 输出部署摘要
+        if: success()
+        run: |
+          {
+            echo "### 部署完成"
+            echo ""
+            echo "- 镜像标签：\`${{ inputs.image_tag || github.sha }}\`"
+            echo "- 提交：\`${{ github.sha }}\`"
+            echo "- 访问入口：\`http://${{ vars.DEPLOY_HOST }}/\`"
+            echo "- 回滚：重新触发本流水线，image_tag 填上一个成功的 SHA"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,19 @@
+# 后端运行镜像：只放 CI 构建好的可执行 jar，容器内不做 Maven 构建（构建在 GitHub 运行器完成）。
+# 构建上下文是发布包里的 server 目录，因此这里直接引用 app.jar。
+FROM eclipse-temurin:17-jre
+
+WORKDIR /app
+COPY app.jar app.jar
+
+# 容器内时区固定为东八区，与数据库连接时区、前端显示保持一致
+ENV TZ=Asia/Shanghai
+# 服务器内存 3.7 GiB，留出余量给 MySQL/Redis 与其他服务
+ENV JAVA_OPTS="-Xms128m -Xmx512m -XX:+UseSerialGC -Duser.timezone=Asia/Shanghai"
+
+EXPOSE 8081
+
+# 用 bash 的 /dev/tcp 探测端口，避免为健康检查额外安装 curl
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+  CMD timeout 3 bash -c '</dev/tcp/127.0.0.1/8081' || exit 1
+
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar"]

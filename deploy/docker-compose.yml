@@ -1,0 +1,57 @@
+# 智小匠上线编排：应用容器 + nginx 前端，复用服务器上已有的 MySQL/Redis 容器。
+#
+# 使用方式（在服务器 /opt/zhixiaojiang 目录）：
+#   IMAGE_TAG=<commit-sha> docker compose up -d --build   # 首次或升级
+#   docker compose ps && docker compose logs -f app       # 查看状态与日志
+#
+# 关键约束：
+#   - DB_INIT_MODE 固定为 never：现有 22 张表与数据必须保留，绝不重新初始化演示数据；
+#   - 数据库与 Redis 走 Docker 内网（zhixiaojiang 网络），不经过公网与 IP 白名单；
+#   - 口令只放在同目录的 app.env（600，不入库），compose 不硬编码任何凭据。
+name: zhixiaojiang
+
+services:
+  app:
+    image: zhixiaojiang-app:${IMAGE_TAG:-local}
+    build:
+      context: ./build/server
+    env_file:
+      - ./app.env
+    environment:
+      # 容器内直连同网络的 MySQL 与 Redis
+      DB_URL: jdbc:mysql://zhixiaojiang-mysql:3306/zhixiaojiang?useUnicode=true&characterEncoding=utf8&connectionTimeZone=Asia/Shanghai&forceConnectionTimeZoneToSession=true
+      DB_USERNAME: zhixiaojiang
+      DB_INIT_MODE: never
+      REDIS_HOST: zhixiaojiang-redis
+      REDIS_PORT: "6379"
+      REDIS_ENABLED: "true"
+      SERVER_PORT: "8081"
+      TZ: Asia/Shanghai
+      # 站点以 HTTP 提供服务时保持 false；接上 HTTPS 后改为 true
+      COOKIE_SECURE: "false"
+    networks: [zhixiaojiang]
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+
+  web:
+    image: zhixiaojiang-web:${IMAGE_TAG:-local}
+    build:
+      context: ./build/web
+    ports:
+      # 服务器 80 端口空闲；改为 "${WEB_PORT:-80}:80" 可换端口
+      - "${WEB_PORT:-80}:80"
+    depends_on:
+      app:
+        condition: service_healthy
+    networks: [zhixiaojiang]
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+
+networks:
+  # 已在迁移时创建，并与 MySQL/Redis 容器共用
+  zhixiaojiang:
+    external: true

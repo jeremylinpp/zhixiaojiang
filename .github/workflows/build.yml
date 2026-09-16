@@ -1,0 +1,63 @@
+# 可复用构建：被 CI 与上线流水线共同调用，保证两条路径构建方式一致。
+# 只在 GitHub 运行器上编译与测试，不连接任何服务器、不读取生产口令。
+name: Build
+
+on:
+  workflow_call:
+
+jobs:
+  backend:
+    name: 后端测试与打包
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 JDK 17 并缓存 Maven 仓库
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      # verify = 编译 + 隔离 H2 测试 + 可执行 jar；测试不依赖外部 MySQL/Redis
+      - name: 运行测试并打包
+        run: mvn -B -ntp verify
+
+      - name: 上传后端 jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: zhixiaojiang-server-jar
+          path: zhixiaojiang-server/target/zhixiaojiang-server-*.jar
+          if-no-files-found: error
+          retention-days: 14
+
+  frontend:
+    name: 前端类型检查与构建
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Node 22 并缓存 npm
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: zhixiaojiang-web/package-lock.json
+
+      - name: 安装依赖
+        run: npm ci
+        working-directory: zhixiaojiang-web
+
+      # build = vue-tsc 类型检查 + vite 构建；生产构建读取 .env.production，
+      # 前端通过同源 /api 访问后端（无需 CORS 白名单）
+      - name: 类型检查与构建
+        run: npm run build
+        working-directory: zhixiaojiang-web
+
+      - name: 上传前端产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: zhixiaojiang-web-dist
+          path: zhixiaojiang-web/dist
+          if-no-files-found: error
+          retention-days: 14
