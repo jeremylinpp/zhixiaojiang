@@ -103,8 +103,11 @@ docker login registry.cn-hangzhou.aliyuncs.com -u <用户名>
 服务器的 `DOCKER-USER` 规则目前只限制 3306/6379，80 端口默认可用；还需在**京东云安全组**放通 80。
 
 - 若只想自己访问：安全组仅放行你的公网出口 IP，做法与数据库端口一致；
-- 若要公开访问：建议先改掉演示口令 `teacher/password`，并接上 HTTPS（1Panel 可签发证书；
-  启用 HTTPS 后把 compose 里的 `COOKIE_SECURE` 改为 `"true"`）。
+- 线上站点已对公网开放：**2026-09-16 已轮换教师口令**（原演示口令 `teacher/password` 已作废，
+  新口令存于服务器 `/opt/zhixiaojiang/teacher-credential.txt`，仅 root 可读），
+  并同时轮换 `JWT_SECRET` 使所有旧会话失效；登录页不再展示任何口令提示。
+- 后续如需 HTTPS：可用 1Panel 签发证书并在 nginx 配置里监听 443，
+  然后把 compose 里的 `COOKIE_SECURE` 改为 `"true"`。
 
 ## 日常发布与回滚
 
@@ -142,6 +145,17 @@ cat .env                              # 当前生效的镜像地址与标签
 | 登录后立刻失效 | `JWT_SECRET` 是否在多次发布间被改动 |
 | 时间显示偏差 | 容器 `TZ`、JDBC `connectionTimeZone` 与数据库时区需一致（当前均按东八区） |
 | 部署未触发 | `DEPLOY_*` 变量/密钥是否配置；`confirm` 是否输入 `deploy` |
+
+## 安全基线（2026-09-16 已落实）
+
+| 项 | 状态 |
+| --- | --- |
+| SSH 密码认证 | 已关闭（`PasswordAuthentication no`，仅密钥登录；root 用密钥、mysql 账号已锁定） |
+| 数据库/Redis 端口 | 由 `DOCKER-USER` 白名单限制为当前公网出口 IP |
+| 应用口令 | 已轮换，旧演示口令作废；凭据文件 600 仅 root 可读 |
+| 会话失效 | 轮换 `JWT_SECRET` + 重启应用容器，旧会话立即失效 |
+| 接口鉴权 | 全部业务接口需登录；越权访问统一返回 404（有隔离测试覆盖） |
+| 敏感信息 | 口令只存服务器 `app.env`（600）；仓库不含任何口令；AI 送模型数据不含身份信息 |
 
 ## 尚未包含
 

@@ -10,7 +10,7 @@ import TasksPage from './components/TasksPage.vue';
 import DiagnosisPage from './components/DiagnosisPage.vue';
 import AssistantPage from './components/AssistantPage.vue';
 import { computed, ref, nextTick, onMounted, onUnmounted, watch } from 'vue';
-import { PanelLeft, Search, Bell, Languages, FlaskConical, Activity, LayoutDashboard, Radar, KeyRound, FileText, ListTodo, Wallet, MessagesSquare, UserRound, ArrowRight, ChevronUp, ChevronDown, Check, Circle, CreditCard, SquareTerminal, RadioTower, ShieldCheck, Timer, BookOpen, Flame, TrendingUp, X, UsersRound, GraduationCap, Coins, Target, ClipboardCheck, Sparkles } from 'lucide-vue-next';
+import { PanelLeft, Search, Bell, FlaskConical, Activity, LayoutDashboard, Radar, KeyRound, FileText, ListTodo, Wallet, MessagesSquare, UserRound, ArrowRight, ChevronUp, ChevronDown, Check, Circle, CreditCard, SquareTerminal, RadioTower, ShieldCheck, Timer, BookOpen, Flame, TrendingUp, X, UsersRound, GraduationCap, Coins, Target, ClipboardCheck, Sparkles } from 'lucide-vue-next';
 
 /** 本地开发和正式构建均固定使用智小匠业务视图，忽略旧参考页参数。 */
 const school = computed(() => true);
@@ -90,7 +90,7 @@ onUnmounted(() => document.removeEventListener('keydown', keys));
 </script>
 
 <template>
-  <div v-if="loginPage" class="login-shell"><section class="login-card panel"><div class="login-brand"><img src="/favicon.svg" alt=""/><strong>智小匠</strong></div><p class="eyebrow">班主任工作台</p><h1>欢迎回来</h1><p class="login-copy">登录后继续管理班级成长与帮扶闭环。</p><form @submit.prevent="signIn"><label>账号<input v-model="username" autocomplete="username" required /></label><label>密码<input v-model="password" type="password" autocomplete="current-password" required /></label><p v-if="loginError" class="login-error">{{ loginError }}</p><button class="button primary login-submit" :disabled="signingIn">{{ signingIn ? '登录中…' : '进入工作台' }}<ArrowRight/></button></form><small>演示账号：teacher / password</small></section></div>
+  <div v-if="loginPage" class="login-shell"><section class="login-card panel"><div class="login-brand"><img src="/favicon.svg" alt=""/><strong>智小匠</strong></div><p class="eyebrow">班主任工作台</p><h1>欢迎回来</h1><p class="login-copy">登录后继续管理班级成长与帮扶闭环。</p><form @submit.prevent="signIn"><label>账号<input v-model="username" autocomplete="username" required /></label><label>密码<input v-model="password" type="password" autocomplete="current-password" required /></label><p v-if="loginError" class="login-error">{{ loginError }}</p><button class="button primary login-submit" :disabled="signingIn">{{ signingIn ? '登录中…' : '进入工作台' }}<ArrowRight/></button></form><small>请使用管理员分配的账号登录；口令不在此页展示。</small></section></div>
   <div v-else class="application" :class="{ collapsed }">
     <header class="topbar">
       <div class="brand-area">
@@ -102,7 +102,6 @@ onUnmounted(() => document.removeEventListener('keydown', keys));
       <button class="search-button" @click="open('搜索')"><Search /><span>搜索</span><kbd>⌘ K</kbd></button>
       <div class="top-tools">
         <button class="icon-button notification" aria-label="通知" @click="open('通知')"><Bell /></button>
-        <button class="icon-button optional-tool" aria-label="语言" @click="open('语言')"><Languages /></button>
         <button class="avatar" aria-label="个人资料" @click="school ? choose('教师资料') : open('个人资料')">{{ t('J', '师') }}</button>
       </div>
     </header>
@@ -119,7 +118,7 @@ onUnmounted(() => document.removeEventListener('keydown', keys));
 
     <main class="canvas">
       <div v-if="active === '概览'" class="page-scroll">
-        <div class="page-heading"><h1>概览</h1><PixelPet /><span v-if="school" class="demo-tag">{{ live ? 'Oracle 数据' : '未连接后端' }}</span><span v-if="liveError" class="connection-note">{{ liveError }}</span></div>
+        <div class="page-heading"><h1>概览</h1><PixelPet /><span v-if="school" class="demo-tag">{{ live ? '实时数据' : '未连接后端' }}</span><span v-if="liveError" class="connection-note">{{ liveError }}</span></div>
 
         <section class="intro-grid">
           <div class="onboarding panel">
@@ -192,7 +191,7 @@ onUnmounted(() => document.removeEventListener('keydown', keys));
     <dialog ref="dialog" @click="(e) => e.target === dialog && close()" @close="panel = ''">
       <div class="dialog-heading"><h2>{{ panel }}</h2><button class="icon-button" aria-label="关闭" @click="close"><X/></button></div>
       <template v-if="panel === '搜索'"><label class="dialog-search"><Search/><input v-model="query" autofocus placeholder="搜索页面与操作" aria-label="搜索页面与操作"/></label><div class="search-results"><button v-for="result in searchResults" :key="result.label" @click="choose(result.label)"><component :is="result.icon"/>{{ result.label }}<ArrowRight/></button><p v-if="!searchResults.length" class="muted">没有找到匹配页面</p></div></template>
-      <template v-else-if="panel === '通知'"><div class="notice-row"><span class="mini-icon blue"><ShieldCheck/></span><div><strong>数据连接状态</strong><p>{{ live ? '已连接 Oracle 数据服务。' : '当前使用演示数据，保存操作需要后端在线。' }}</p></div></div></template>
+      <template v-else-if="panel === '通知'"><div class="notice-row"><span class="mini-icon blue"><ShieldCheck/></span><div><strong>数据连接状态</strong><p>{{ live ? '已连接 实时数据服务。' : '未连接后端，暂时无法读取或保存业务数据，请检查服务连接。' }}</p></div></div></template>
       <template v-else><div class="placeholder-icon"><component :is="school ? GraduationCap : LayoutDashboard"/></div><p class="dialog-description">这是「{{ panel }}」的操作入口。保存后将由后端写入 MySQL，并保留操作者与时间记录。</p><button class="button primary dialog-done" @click="close">返回概览</button></template>
     </dialog>
   </div>
