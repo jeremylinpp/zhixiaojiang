@@ -31,6 +31,14 @@ spring:
       schema-locations: classpath:schema.sql,classpath:student-portal-schema.sql
       data-locations: classpath:data.sql
       continue-on-error: false
+mybatis:
+  # 映射文件放在 resources/mapper 下（与 Mapper 接口不同包），因此显式声明扫描位置
+  mapper-locations: classpath*:mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+    jdbc-type-for-null: 'NULL'
+    default-statement-timeout: 30
+
 app:
   jwt-secret: ${JWT_SECRET:change-me-in-local-env-please-32-chars}
   cookie-secure: ${COOKIE_SECURE:false}
