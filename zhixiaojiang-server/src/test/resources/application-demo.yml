@@ -16,7 +16,8 @@ spring:
   sql:
     init:
       mode: always
-      schema-locations: classpath:demo-schema.sql,classpath:student-portal-schema.sql
+      # student-portal-schema.sql 用 optional: 前缀：该文件属学生端在途改动，缺失时跳过而不是中断测试
+      schema-locations: classpath:demo-schema.sql,optional:classpath:student-portal-schema.sql
       data-locations: classpath:demo-data.sql
 server:
   port: 8082
