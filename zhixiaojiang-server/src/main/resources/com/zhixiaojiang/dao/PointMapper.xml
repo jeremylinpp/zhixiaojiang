@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zhixiaojiang.dao.PointMapper">
+
+  <resultMap id="ledgerRow" type="com.zhixiaojiang.model.vo.PointLedgerRow">
+    <id column="id" property="id"/>
+    <result column="student_id" property="studentId"/>
+    <result column="amount" property="amount"/>
+    <result column="category" property="category"/>
+    <result column="reason" property="reason"/>
+    <result column="created_at" property="createdAt"/>
+    <result column="reversed" property="reversed"/>
+    <result column="idempotency_key" property="idempotencyKey"/>
+  </resultMap>
+
+  <resultMap id="ruleRow" type="com.zhixiaojiang.model.vo.PointRuleRow">
+    <id column="id" property="id"/>
+    <result column="name" property="name"/>
+    <result column="category" property="category"/>
+    <result column="amount" property="amount"/>
+    <result column="enabled" property="enabled"/>
+    <result column="description" property="description"/>
+  </resultMap>
+
+  <!-- reversed 由是否存在 reverse:<本笔 id> 的反向流水判定；idempotencyKey 只用于推导 reversalOf，不对外暴露 -->
+  <select id="page" resultMap="ledgerRow">
+    select p.id, p.student_id, p.amount, p.category, p.reason, p.created_at, p.idempotency_key,
+           exists(select 1 from point_ledger r where r.idempotency_key = concat('reverse:', p.id)) as reversed
+    from point_ledger p
+    where p.student_id = #{studentId}
+    order by p.id desc
+    limit #{size} offset #{offset}
+  </select>
+
+  <select id="count" resultType="long">
+    select count(*) from point_ledger where student_id = #{studentId}
+  </select>
+
+  <select id="balance" resultType="long">
+    select coalesce(sum(amount), 0) from point_ledger where student_id = #{studentId}
+  </select>
+
+  <select id="enabledRuleAmount" resultType="int">
+    select amount from point_rule where id = #{ruleId} and enabled = true
+  </select>
+
+  <insert id="insert">
+    insert ignore into point_ledger(student_id, amount, category, reason, idempotency_key, created_by)
+    values (#{studentId}, #{amount}, #{category}, #{reason}, #{idempotencyKey}, #{createdBy})
+  </insert>
+
+  <select id="findByIdempotencyKey" resultMap="ledgerRow">
+    select id, student_id, amount, category, reason, idempotency_key
+    from point_ledger
+    where idempotency_key = #{idempotencyKey}
+  </select>
+
+  <select id="findById" resultMap="ledgerRow">
+    select id, student_id, amount, category, reason, idempotency_key
+    from point_ledger
+    where id = #{id}
+  </select>
+
+  <select id="enabledRules" resultMap="ruleRow">
+    select id, name, category, amount, enabled, description
+    from point_rule
+    where enabled = true
+    order by id
+  </select>
+
+  <insert id="insertRule" useGeneratedKeys="true" keyProperty="id">
+    insert into point_rule(name, category, amount, enabled, description, created_by)
+    values (#{name}, #{category}, #{amount}, #{enabled}, #{description}, #{createdBy})
+  </insert>
+</mapper>

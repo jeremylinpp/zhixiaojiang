@@ -3,7 +3,11 @@ package com.zhixiaojiang.service;
 import com.zhixiaojiang.auth.TeacherScope;
 import com.zhixiaojiang.common.AuditRecorder;
 import com.zhixiaojiang.common.constant.PointCategory;
-import com.zhixiaojiang.dao.PointDao;
+import com.zhixiaojiang.dao.PointMapper;
+import com.zhixiaojiang.model.po.PointLedger;
+import com.zhixiaojiang.model.po.PointRule;
+import com.zhixiaojiang.model.vo.PointLedgerRow;
+import com.zhixiaojiang.model.vo.PointRuleRow;
 import com.zhixiaojiang.model.dto.PointAwardRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -21,11 +25,11 @@ import java.util.Map;
  */
 @Service
 public class PointsService {
-    private final PointDao points;
+    private final PointMapper points;
     private final TeacherScope scope;
     private final AuditRecorder audit;
 
-    public PointsService(PointDao points, TeacherScope scope, AuditRecorder audit) {
+    public PointsService(PointMapper points, TeacherScope scope, AuditRecorder audit) {
         this.points = points;
         this.scope = scope;
         this.audit = audit;
@@ -56,29 +60,40 @@ public class PointsService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "积分必须是 -1000 至 1000 的非零整数");
         String reason = award.reason().trim();
         String key = "teacher:" + teacher + ":" + award.idempotencyKey();
-        int changed = points.insert(award.studentId(), amount, category.name(), reason, key, teacher);
-        Map<String, Object> saved = points.findByIdempotencyKey(key);
-        if (((Number) saved.get("studentId")).longValue() != award.studentId()
-                || ((Number) saved.get("amount")).intValue() != amount
-                || !reason.equals(saved.get("reason"))
-                || !category.name().equals(saved.get("category")))
+        PointLedger ledger = new PointLedger();
+        ledger.setStudentId(award.studentId());
+        ledger.setAmount(amount);
+        ledger.setCategory(category.name());
+        ledger.setReason(reason);
+        ledger.setIdempotencyKey(key);
+        ledger.setCreatedBy(teacher);
+        int changed = points.insert(ledger);
+        PointLedgerRow saved = points.findByIdempotencyKey(key)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "积分入账失败，请重试"));
+        if (saved.getStudentId() != award.studentId() || saved.getAmount() != amount
+                || !reason.equals(saved.getReason()) || !category.name().equals(saved.getCategory()))
             throw new ResponseStatusException(HttpStatus.CONFLICT, "重复请求的内容发生变化，请重新创建记录");
-        long id = ((Number) saved.get("id")).longValue();
+        long id = saved.getId();
         if (changed == 1) audit.record(teacher, "CREATE", "point_ledger", id, "录入机智币");
         return Map.of("id", id, "saved", changed == 1, "idempotencyKey", award.idempotencyKey());
     }
 
     @Transactional
     public Map<String, Object> reverse(long ledgerId) {
-        Map<String, Object> original = points.findById(ledgerId)
+        PointLedgerRow original = points.findById(ledgerId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "积分记录不存在"));
-        long teacher = scope.requireStudent(((Number) original.get("studentId")).longValue());
-        if (PointCategory.REVERSAL.name().equals(original.get("category")))
+        long teacher = scope.requireStudent(original.getStudentId());
+        if (PointCategory.REVERSAL.name().equals(original.getCategory()))
             throw new ResponseStatusException(HttpStatus.CONFLICT, "反向流水不能再次撤销，请新建纠错记录");
-        String reason = "撤销：" + original.get("reason");
-        int changed = points.insert(((Number) original.get("studentId")).longValue(),
-                -((Number) original.get("amount")).intValue(), PointCategory.REVERSAL.name(),
-                reason.substring(0, Math.min(160, reason.length())), "reverse:" + ledgerId, teacher);
+        String reason = "撤销：" + original.getReason();
+        PointLedger reversal = new PointLedger();
+        reversal.setStudentId(original.getStudentId());
+        reversal.setAmount(-original.getAmount());
+        reversal.setCategory(PointCategory.REVERSAL.name());
+        reversal.setReason(reason.substring(0, Math.min(160, reason.length())));
+        reversal.setIdempotencyKey("reverse:" + ledgerId);
+        reversal.setCreatedBy(teacher);
+        int changed = points.insert(reversal);
         if (changed == 1) audit.record(teacher, "REVERSE", "point_ledger", ledgerId, "撤销机智币，保留原流水");
         return Map.of("saved", changed == 1);
     }
@@ -90,13 +105,15 @@ public class PointsService {
 
     @Transactional
     public Map<String, Object> createRule(Map<String, Object> body) {
-        long id = points.insertRule(
-                com.zhixiaojiang.common.util.RequestValues.text(body, "name", "新积分规则"),
-                com.zhixiaojiang.common.util.RequestValues.text(body, "category", PointCategory.MANUAL.name()),
-                com.zhixiaojiang.common.util.RequestValues.intValue(body.get("amount")),
-                body.getOrDefault("enabled", true),
-                body.get("description") == null ? null : String.valueOf(body.get("description")),
-                scope.teacher());
+        PointRule rule = new PointRule();
+        rule.setName(com.zhixiaojiang.common.util.RequestValues.text(body, "name", "新积分规则"));
+        rule.setCategory(com.zhixiaojiang.common.util.RequestValues.text(body, "category", PointCategory.MANUAL.name()));
+        rule.setAmount(com.zhixiaojiang.common.util.RequestValues.intValue(body.get("amount")));
+        rule.setEnabled(Boolean.parseBoolean(String.valueOf(body.getOrDefault("enabled", true))));
+        rule.setDescription(body.get("description") == null ? null : String.valueOf(body.get("description")));
+        rule.setCreatedBy(scope.teacher());
+        points.insertRule(rule);
+        long id = rule.getId();
         audit.record("CREATE", "point_rule", id, "创建积分规则");
         return Map.of("id", id);
     }

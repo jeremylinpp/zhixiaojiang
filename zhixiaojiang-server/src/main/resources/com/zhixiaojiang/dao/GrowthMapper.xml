@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zhixiaojiang.dao.GrowthMapper">
+
+  <resultMap id="studentBrief" type="com.zhixiaojiang.model.vo.StudentBrief">
+    <id column="id" property="id"/>
+    <result column="name" property="name"/>
+    <result column="student_no" property="studentNo"/>
+    <result column="status" property="status"/>
+  </resultMap>
+
+  <resultMap id="dimensionAverages" type="com.zhixiaojiang.model.vo.DimensionAverages">
+    <result column="moral" property="moral"/>
+    <result column="skill" property="skill"/>
+    <result column="thinking" property="thinking"/>
+    <result column="smart" property="smart"/>
+  </resultMap>
+
+  <resultMap id="scoreRow" type="com.zhixiaojiang.model.vo.ScoreRow">
+    <id column="id" property="id"/>
+    <result column="subject" property="subject"/>
+    <result column="exam_name" property="examName"/>
+    <result column="score" property="score"/>
+    <result column="full_score" property="fullScore"/>
+    <result column="occurred_on" property="occurredOn"/>
+    <result column="created_by" property="createdBy"/>
+  </resultMap>
+
+  <resultMap id="evaluationRow" type="com.zhixiaojiang.model.vo.EvaluationRow">
+    <id column="id" property="id"/>
+    <result column="period_start" property="periodStart"/>
+    <result column="period_end" property="periodEnd"/>
+    <result column="moral_score" property="moralScore"/>
+    <result column="skill_score" property="skillScore"/>
+    <result column="thinking_score" property="thinkingScore"/>
+    <result column="smart_score" property="smartScore"/>
+    <result column="evidence" property="evidence"/>
+    <result column="created_by" property="createdBy"/>
+  </resultMap>
+
+  <resultMap id="growthRecordRow" type="com.zhixiaojiang.model.vo.GrowthRecordRow">
+    <id column="id" property="id"/>
+    <result column="dimension" property="dimension"/>
+    <result column="score" property="score"/>
+    <result column="title" property="title"/>
+    <result column="detail" property="detail"/>
+    <result column="occurred_on" property="occurredOn"/>
+    <result column="source" property="source"/>
+    <result column="created_by" property="createdBy"/>
+  </resultMap>
+
+  <resultMap id="attendanceRow" type="com.zhixiaojiang.model.vo.AttendanceRow">
+    <id column="id" property="id"/>
+    <result column="attendance_date" property="attendanceDate"/>
+    <result column="status" property="status"/>
+    <result column="note" property="note"/>
+    <result column="created_by" property="createdBy"/>
+  </resultMap>
+
+  <resultMap id="skillRow" type="com.zhixiaojiang.model.vo.SkillRow">
+    <id column="id" property="id"/>
+    <result column="skill_name" property="skillName"/>
+    <result column="score" property="score"/>
+    <result column="level" property="level"/>
+    <result column="occurred_on" property="occurredOn"/>
+    <result column="evidence" property="evidence"/>
+    <result column="created_by" property="createdBy"/>
+  </resultMap>
+
+  <select id="student" resultMap="studentBrief">
+    select id, name, student_no, status from student where id = #{studentId}
+  </select>
+
+  <select id="dimensionAverages" resultMap="dimensionAverages">
+    select avg(moral_score) as moral, avg(skill_score) as skill,
+           avg(thinking_score) as thinking, avg(smart_score) as smart
+    from dimension_evaluation
+    where student_id = #{studentId} and period_end between #{start} and #{end}
+  </select>
+
+  <select id="scores" resultMap="scoreRow">
+    select id, subject, exam_name, score, full_score, occurred_on, created_by
+    from score_record
+    where student_id = #{studentId} and occurred_on between #{start} and #{end}
+    order by occurred_on desc, id desc
+    limit 100
+  </select>
+
+  <select id="evaluations" resultMap="evaluationRow">
+    select id, period_start, period_end, moral_score, skill_score, thinking_score, smart_score, evidence, created_by
+    from dimension_evaluation
+    where student_id = #{studentId} and period_end between #{start} and #{end}
+    order by period_end desc, id desc
+    limit 100
+  </select>
+
+  <select id="growthRecords" resultMap="growthRecordRow">
+    select id, dimension, score, title, detail, occurred_on, source, created_by
+    from growth_record
+    where student_id = #{studentId} and occurred_on between #{start} and #{end}
+    order by occurred_on desc, id desc
+    limit 100
+  </select>
+
+  <select id="attendance" resultMap="attendanceRow">
+    select id, attendance_date, status, note, created_by
+    from attendance_record
+    where student_id = #{studentId} and attendance_date between #{start} and #{end}
+    order by attendance_date desc
+    limit 100
+  </select>
+
+  <select id="skills" resultMap="skillRow">
+    select id, skill_name, score, level, occurred_on, evidence, created_by
+    from skill_record
+    where student_id = #{studentId} and occurred_on between #{start} and #{end}
+    order by occurred_on desc, id desc
+    limit 100
+  </select>
+
+  <select id="countSameExam" resultType="int">
+    select count(*) from score_record
+    where student_id = #{studentId} and subject = #{subject} and exam_name = #{examName}
+  </select>
+
+  <insert id="insertExam" useGeneratedKeys="true" keyProperty="id">
+    insert into score_record(student_id, subject, exam_name, score, full_score, occurred_on, created_by)
+    values (#{studentId}, #{subject}, #{examName}, #{score}, #{fullScore}, #{occurredOn}, #{createdBy})
+  </insert>
+
+  <select id="attendanceIdOn" resultType="long">
+    select id from attendance_record
+    where student_id = #{studentId} and attendance_date = #{date}
+    order by id
+    limit 1
+  </select>
+
+  <insert id="insertAttendance" useGeneratedKeys="true" keyProperty="id">
+    insert into attendance_record(student_id, attendance_date, status, note, created_by)
+    values (#{studentId}, #{attendanceDate}, #{status}, #{note}, #{createdBy})
+  </insert>
+
+  <update id="updateAttendance">
+    update attendance_record set status = #{status}, note = #{note}, created_by = #{actor} where id = #{id}
+  </update>
+
+  <insert id="insertSkill" useGeneratedKeys="true" keyProperty="id">
+    insert into skill_record(student_id, skill_name, score, level, occurred_on, evidence, created_by)
+    values (#{studentId}, #{skillName}, #{score}, #{level}, #{occurredOn}, #{evidence}, #{createdBy})
+  </insert>
+
+  <insert id="insertGrowth" useGeneratedKeys="true" keyProperty="id">
+    insert into growth_record(student_id, dimension, score, title, detail, occurred_on, source, created_by)
+    values (#{studentId}, #{dimension}, #{score}, #{title}, #{detail}, #{occurredOn}, #{source}, #{createdBy})
+  </insert>
+
+  <insert id="insertEvaluation" useGeneratedKeys="true" keyProperty="id">
+    insert into dimension_evaluation(student_id, period_start, period_end, moral_score, skill_score, thinking_score, smart_score, evidence, created_by)
+    values (#{studentId}, #{periodStart}, #{periodEnd}, #{moralScore}, #{skillScore}, #{thinkingScore}, #{smartScore}, #{evidence}, #{createdBy})
+  </insert>
+</mapper>
