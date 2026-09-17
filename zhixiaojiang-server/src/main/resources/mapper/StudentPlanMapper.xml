@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zhixiaojiang.dao.StudentPlanMapper">
+
+  <resultMap id="planRow" type="com.zhixiaojiang.model.vo.PortalPlanRow">
+    <id column="id" property="id"/>
+    <result column="title" property="title"/>
+    <result column="goal" property="goal"/>
+    <result column="actions" property="actions"/>
+    <result column="review_on" property="reviewOn"/>
+    <result column="version" property="version"/>
+    <result column="status" property="status"/>
+  </resultMap>
+
+  <resultMap id="planContext" type="com.zhixiaojiang.model.vo.PortalPlanContext">
+    <result column="plan_id" property="planId"/>
+    <result column="version" property="version"/>
+    <result column="student_id" property="studentId"/>
+    <result column="status" property="status"/>
+  </resultMap>
+
+  <resultMap id="executionRow" type="com.zhixiaojiang.model.vo.PortalPlanExecutionRow">
+    <id column="id" property="id"/>
+    <result column="content" property="content"/>
+    <result column="occurred_on" property="occurredOn"/>
+    <result column="created_at" property="createdAt"/>
+  </resultMap>
+
+  <resultMap id="feedbackRow" type="com.zhixiaojiang.model.vo.PortalPlanFeedbackRow">
+    <id column="id" property="id"/>
+    <result column="content" property="content"/>
+    <result column="created_at" property="createdAt"/>
+  </resultMap>
+
+  <!-- 学生端只看到最新版本：同方案下不存在更高版本的发布记录 -->
+  <select id="visibleToStudent" resultMap="planRow">
+    select p.id, p.title, p.goal, p.actions, p.review_on, p.version, i.status
+    from student_plan_publication p
+    join intervention_plan i on i.id = p.plan_id
+    where i.student_id = #{studentId} and i.status &lt;&gt; 'DRAFT'
+      and not exists (select 1 from student_plan_publication n where n.plan_id = p.plan_id and n.version &gt; p.version)
+    order by p.id desc
+  </select>
+
+  <select id="versionsOfPlan" resultMap="planRow">
+    select id, title, goal, actions, review_on, version
+    from student_plan_publication
+    where plan_id = #{planId}
+    order by version desc
+  </select>
+
+  <select id="contextForStudent" resultMap="planContext">
+    select p.plan_id, p.version, i.student_id, i.status
+    from student_plan_publication p
+    join intervention_plan i on i.id = p.plan_id
+    where p.id = #{publicationId} and i.student_id = #{studentId} and i.status &lt;&gt; 'DRAFT'
+    <if test="lock">for update</if>
+  </select>
+
+  <select id="contextForTeacher" resultMap="planContext">
+    select p.plan_id, p.version, i.student_id, i.status
+    from student_plan_publication p
+    join intervention_plan i on i.id = p.plan_id
+    join student s on s.id = i.student_id
+    join class_room c on c.id = s.class_id
+    where p.id = #{publicationId} and c.teacher_id = #{teacherId}
+    <if test="lock">for update</if>
+  </select>
+
+  <select id="latestVersion" resultType="int">
+    select coalesce(max(version), 0) from student_plan_publication where plan_id = #{planId}
+  </select>
+
+  <select id="executions" resultMap="executionRow">
+    select id, content, occurred_on, created_at
+    from student_plan_execution
+    where publication_id = #{publicationId}
+    order by id desc
+  </select>
+
+  <select id="feedback" resultMap="feedbackRow">
+    select id, content, created_at
+    from student_plan_feedback
+    where publication_id = #{publicationId}
+    order by id desc
+  </select>
+
+  <select id="executionByRequestKey" resultMap="executionRow">
+    select id, content, occurred_on, created_at
+    from student_plan_execution
+    where publication_id = #{publicationId} and request_key = #{requestKey}
+  </select>
+
+  <select id="feedbackByRequestKey" resultMap="feedbackRow">
+    select id, content, created_at
+    from student_plan_feedback
+    where publication_id = #{publicationId} and request_key = #{requestKey}
+  </select>
+
+  <insert id="insertPublication" useGeneratedKeys="true" keyProperty="id">
+    insert into student_plan_publication(plan_id, version, title, goal, actions, review_on)
+    values (#{planId}, #{version}, #{title}, #{goal}, #{actions}, #{reviewOn})
+  </insert>
+
+  <insert id="insertExecution" useGeneratedKeys="true" keyProperty="id">
+    insert into student_plan_execution(publication_id, request_key, content, occurred_on)
+    values (#{publicationId}, #{requestKey}, #{content}, #{occurredOn})
+  </insert>
+
+  <insert id="insertFeedback" useGeneratedKeys="true" keyProperty="id">
+    insert into student_plan_feedback(publication_id, request_key, content, created_by)
+    values (#{publicationId}, #{requestKey}, #{content}, #{createdBy})
+  </insert>
+</mapper>

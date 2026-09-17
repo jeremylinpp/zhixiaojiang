@@ -1,30 +1,32 @@
 package com.zhixiaojiang.service;
 
 import com.zhixiaojiang.auth.StudentScope;
-import com.zhixiaojiang.common.util.RowMaps;
+import com.zhixiaojiang.dao.StudentMessageMapper;
+import com.zhixiaojiang.model.po.StudentMessage;
 import org.springframework.http.HttpStatus;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 import java.util.Map;
 
 @Service
 public class StudentMessageService {
- private final JdbcTemplate db;
+ private final StudentMessageMapper messages;
  private final StudentScope scope;
- public StudentMessageService(JdbcTemplate db,StudentScope scope){this.db=db;this.scope=scope;}
+ public StudentMessageService(StudentMessageMapper messages,StudentScope scope){this.messages=messages;this.scope=scope;}
  /** Call inside the business transaction: no message can precede a committed result. */
  public void send(long studentId,String key,String title,String content,String destination){
-  db.update("insert ignore into student_message(student_id,event_key,title,content,destination) values(?,?,?,?,?)",studentId,key,title,content,destination);
+  StudentMessage message=new StudentMessage();
+  message.setStudentId(studentId);message.setEventKey(key);message.setTitle(title);message.setContent(content);message.setDestination(destination);
+  messages.insertIfAbsent(message);
  }
  public Map<String,Object> list(int page,int pageSize){
   long id=scope.studentId();int size=Math.max(1,Math.min(100,pageSize)),p=Math.max(1,Math.min(100000,page));
-  return Map.of("items",db.query("select id,title,content,destination,created_at,read_at from student_message where student_id=? order by id desc limit ? offset ?",RowMaps.mapper(),id,size,(p-1)*size),"total",db.queryForObject("select count(*) from student_message where student_id=?",Long.class,id),"unread",db.queryForObject("select count(*) from student_message where student_id=? and read_at is null",Long.class,id));
+  return Map.of("items",messages.page(id,size,(p-1)*size),"total",messages.count(id),"unread",messages.unreadCount(id));
  }
  public Map<String,Object> read(long id){
   long student=scope.studentId();
-  if(db.queryForObject("select count(*) from student_message where id=? and student_id=?",Integer.class,id,student)==0)throw new ResponseStatusException(HttpStatus.NOT_FOUND,"消息不存在");
-  db.update("update student_message set read_at=coalesce(read_at,current_timestamp) where id=? and student_id=?",id,student);
+  if(messages.countOwned(id,student)==0)throw new ResponseStatusException(HttpStatus.NOT_FOUND,"消息不存在");
+  messages.markRead(id,student);
   return Map.of("saved",true);
  }
 }
