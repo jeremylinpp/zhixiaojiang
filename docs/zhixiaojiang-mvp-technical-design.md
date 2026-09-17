@@ -82,7 +82,7 @@ AI 仅承担数据归纳、趋势解释和建议生成。涉及心理、安全�
 |---|---|
 | 前端 | Vue 3、TypeScript、Vite、Lucide 图标（当前 MVP）；路由以路径与视图状态保持轻量实现 |
 | UI 与图表 | 自定义 CSS 主题与可访问原生控件（当前 MVP）；Element Plus/ECharts 作为后续组件化扩展位 |
-| 后端 | Java 17、Spring Boot 3、Spring Security、JWT、JdbcTemplate |
+| 后端 | Java 17、Spring Boot 3、Spring Security、JWT、MyBatis |
 | 数据 | MySQL 8、Redis |
 | AI | 规则引擎加 OpenAI 兼容 API |
 | 部署 | 本机 Vite + Spring Boot；Docker/Nginx 作为后续部署扩展 |
@@ -102,7 +102,9 @@ AI 仅承担数据归纳、趋势解释和建议生成。涉及心理、安全�
 
 后端使用 Maven 父子工程管理：根目录 `pom.xml` 为聚合父 POM，统一约束 Java 版本、依赖版本与插件版本，子模块只声明 artifactId 与依赖；前端保持独立 npm 工程，由 npm 单独构建与部署，因此 Maven 构建不依赖 Node 环境。后端命令在仓库根目录执行：`mvn test`、`mvn -DskipTests package`、`mvn -pl zhixiaojiang-server spring-boot:run`。
 
-Java 代码按职责分包：`controller`（Web 层，按业务域拆分为认证、驾驶舱、学生、成长工作台、预警、一人一策、六机任务、班级诊改、机智币、教师资料、AI 分析）、`auth`（会话令牌、会话撤销、班级授权边界）、`common`（统一响应结构、全局异常、审计记录）与 `common.util`（SQL 参数、请求取值、JSON 列、主键回填）、`common.constant`（业务取值域枚举，常量名与库内存储值一致）、`config`（Web 安全配置）。控制器当前直接使用 JdbcTemplate，后续引入 `service`/`dao` 分层，对应「应用分层」规约的后续改造项。
+Java 代码按职责分包：`controller`（Web 层，按业务域拆分为认证、驾驶舱、学生、成长工作台、预警、一人一策、六机任务、班级诊改、机智币、教师资料、AI 分析）、`service`（业务规则与事务边界）、`dao`（MyBatis Mapper 接口，映射文件与接口同包同名）、`model`（`po` 表实体、`vo` 查询投影、`dto` 请求体）、`auth`（会话令牌、会话撤销、班级授权边界）、`common`（统一响应结构、全局异常、审计记录）与 `common.util`（请求取值、JSON 列处理）、`common.constant`（业务取值域枚举，常量名与库内存储值一致）、`config`（Web 安全配置、MyBatis 配置）。
+
+数据访问统一走 MyBatis：Mapper 接口声明查询，`src/main/resources` 下同名 XML 提供 SQL，动态条件用 `<foreach>`/`<if>` 而不是字符串拼接，写入用 `useGeneratedKeys` 回填主键。查询结果按用途分成两类——表实体（`po`）用于写入，面向接口响应的投影（`vo`）用于读取，投影类属性名即 JSON 字段名，因此不会把表的其余列带到前端。JSON 列（预警证据、帮扶建议）由 `JsonListTypeHandler` 解析成数组。SQL 只出现在映射文件里，控制器与业务层不再直接使用 JdbcTemplate。
 
 ### 4.2 系统分层
 
