@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zhixiaojiang.dao.StudentAccountMapper">
+
+  <resultMap id="studentAccountRow" type="com.zhixiaojiang.model.vo.StudentAccountRow">
+    <result column="username" property="username"/>
+    <result column="must_change_password" property="mustChangePassword"/>
+  </resultMap>
+
+  <select id="accountOfStudent" resultMap="studentAccountRow">
+    select u.username, a.must_change_password
+    from student_account a
+    join sys_user u on u.id = a.user_id
+    where a.student_id = #{studentId}
+  </select>
+
+  <select id="studentStatus" resultType="string">
+    select status from student where id = #{studentId}
+  </select>
+
+  <select id="studentName" resultType="string">
+    select name from student where id = #{studentId}
+  </select>
+
+  <select id="countAccountsOfStudent" resultType="int">
+    select count(*) from student_account where student_id = #{studentId}
+  </select>
+
+  <select id="countUsersByName" resultType="int">
+    select count(*) from sys_user where username = #{username}
+  </select>
+
+  <insert id="insertUser" useGeneratedKeys="true" keyProperty="id">
+    insert into sys_user(username, password_hash, display_name, role)
+    values (#{username}, #{passwordHash}, #{displayName}, 'STUDENT')
+  </insert>
+
+  <insert id="insertAccount">
+    insert into student_account(user_id, student_id) values (#{userId}, #{studentId})
+  </insert>
+
+  <select id="passwordHashForUpdate" resultType="string">
+    select password_hash from sys_user where id = #{userId} for update
+  </select>
+
+  <update id="updatePassword">
+    update sys_user set password_hash = #{passwordHash} where id = #{userId}
+  </update>
+
+  <update id="markPasswordChanged">
+    update student_account
+    set must_change_password = false, session_version = session_version + 1
+    where user_id = #{userId}
+  </update>
+
+  <select id="identityOfUser" resultType="com.zhixiaojiang.model.vo.StudentIdentity">
+    select a.must_change_password as mustChangePassword, a.session_version as sessionVersion
+    from student_account a
+    join student s on s.id = a.student_id
+    where a.user_id = #{userId} and s.status = 'ACTIVE'
+  </select>
+
+  <select id="activeStudentIdOfUser" resultType="long">
+    select s.id
+    from student_account a
+    join student s on s.id = a.student_id
+    join sys_user u on u.id = a.user_id
+    where a.user_id = #{userId} and u.role = 'STUDENT' and s.status = 'ACTIVE'
+  </select>
+
+  <select id="mustChangePassword" resultType="boolean">
+    select must_change_password from student_account where user_id = #{userId}
+  </select>
+
+  <select id="sessionStudentId" resultType="long">
+    select s.id
+    from student_account a
+    join sys_user u on u.id = a.user_id
+    join student s on s.id = a.student_id
+    where a.user_id = #{userId} and a.session_version = #{sessionVersion}
+      and u.role = 'STUDENT' and s.status = 'ACTIVE'
+  </select>
+</mapper>

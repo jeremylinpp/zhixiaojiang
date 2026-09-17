@@ -53,7 +53,7 @@ public class SecurityConfig {
     }
 
     @Bean
-    SecurityFilterChain filterChain(HttpSecurity http, SessionRevocationService revocations, ObjectMapper json, org.springframework.jdbc.core.JdbcTemplate db) throws Exception {
+    SecurityFilterChain filterChain(HttpSecurity http, SessionRevocationService revocations, ObjectMapper json, com.zhixiaojiang.dao.StudentAccountMapper accounts) throws Exception {
         var csrf = CookieCsrfTokenRepository.withHttpOnlyFalse();
         csrf.setHeaderName("X-CSRF-TOKEN");
         http.csrf(c -> c.csrfTokenRepository(csrf).ignoringRequestMatchers("/api/v1/auth/login")).cors(c -> c.configurationSource(corsConfigurationSource()))
@@ -62,7 +62,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/student-portal/**").hasRole("STUDENT")
                         .anyRequest().hasRole("TEACHER"))
                 .sessionManagement(s -> s.sessionCreationPolicy(org.springframework.security.config.http.SessionCreationPolicy.STATELESS))
-                .addFilterBefore(new JwtFilter(secret, revocations, json, db), UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(new JwtFilter(secret, revocations, json, accounts), UsernamePasswordAuthenticationFilter.class)
                 .formLogin(f -> f.disable()).httpBasic(b -> b.disable())
                 .exceptionHandling(e -> e.authenticationEntryPoint((req, res, ex) -> {
                     res.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
@@ -89,13 +89,13 @@ public class SecurityConfig {
         private final String secret;
         private final SessionRevocationService revocations;
         private final ObjectMapper json;
-        private final org.springframework.jdbc.core.JdbcTemplate db;
+        private final com.zhixiaojiang.dao.StudentAccountMapper accounts;
 
-        JwtFilter(String secret, SessionRevocationService revocations, ObjectMapper json, org.springframework.jdbc.core.JdbcTemplate db) {
+        JwtFilter(String secret, SessionRevocationService revocations, ObjectMapper json, com.zhixiaojiang.dao.StudentAccountMapper accounts) {
             this.secret = secret;
             this.revocations = revocations;
             this.json=json;
-            this.db=db;
+            this.accounts=accounts;
         }
 
         protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain) throws ServletException, IOException {
@@ -112,7 +112,7 @@ public class SecurityConfig {
                         String role = payload.path("role").asText();
                         long id=Long.parseLong(subject);
                         boolean valid=id>0 && !username.isBlank() && List.of("TEACHER","STUDENT").contains(role);
-                        if(valid && "STUDENT".equals(role)) valid=!db.queryForList("select a.user_id from student_account a join sys_user u on u.id=a.user_id join student s on s.id=a.student_id where a.user_id=? and a.session_version=? and u.role='STUDENT' and s.status='ACTIVE'",Long.class,id,payload.path("sv").asLong()).isEmpty();
+                        if(valid && "STUDENT".equals(role)) valid=accounts.sessionStudentId(id,payload.path("sv").asLong()).isPresent();
                         if(valid) {
                         SecurityContextHolder.getContext().setAuthentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(username, null, List.of(new SimpleGrantedAuthority("ROLE_" + role))));
                         req.setAttribute("userId", subject);

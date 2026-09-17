@@ -3,7 +3,9 @@ package com.zhixiaojiang.service;
 import com.zhixiaojiang.auth.SessionRevocationService;
 import com.zhixiaojiang.auth.SessionToken;
 import com.zhixiaojiang.auth.TeacherScope;
+import com.zhixiaojiang.dao.StudentAccountMapper;
 import com.zhixiaojiang.dao.UserMapper;
+import com.zhixiaojiang.model.vo.StudentIdentity;
 import com.zhixiaojiang.model.vo.UserAccount;
 import com.zhixiaojiang.model.dto.LoginRequest;
 import org.springframework.http.HttpStatus;
@@ -23,14 +25,14 @@ public class AuthService {
     private final SessionRevocationService revocations;
     private final TeacherScope scope;
     private final String secret;
-    private final org.springframework.jdbc.core.JdbcTemplate db;
+    private final StudentAccountMapper accounts;
 
-    public AuthService(UserMapper users, PasswordEncoder encoder, SessionRevocationService revocations, TeacherScope scope, org.springframework.core.env.Environment env, org.springframework.jdbc.core.JdbcTemplate db) {
+    public AuthService(UserMapper users, StudentAccountMapper accounts, PasswordEncoder encoder, SessionRevocationService revocations, TeacherScope scope, org.springframework.core.env.Environment env) {
         this.users = users;
+        this.accounts = accounts;
         this.encoder = encoder;
         this.revocations = revocations;
         this.scope = scope;
-        this.db = db;
         this.secret = env.getProperty("app.jwt-secret", "change-me-in-local-env-please-32-chars");
     }
 
@@ -44,13 +46,13 @@ public class AuthService {
         if (!encoder.matches(request.password(), user.getPasswordHash()))
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "用户名或密码错误");
         long id = user.getId();
-        Map<String,Object> student="STUDENT".equals(user.getRole())?studentIdentity(id):Map.of();
-        String token = SessionToken.issue(id, request.username(), user.getRole(), secret, student.isEmpty()?0:((Number)student.get("sessionVersion")).longValue());
+        var student = "STUDENT".equals(user.getRole()) ? studentIdentity(id) : java.util.Optional.<StudentIdentity>empty();
+        String token = SessionToken.issue(id, request.username(), user.getRole(), secret, student.map(StudentIdentity::getSessionVersion).orElse(0L));
         Map<String, Object> teacher = new LinkedHashMap<>();
         teacher.put("id", id);
         teacher.put("displayName", user.getDisplayName());
         teacher.put("role", user.getRole());
-        if(!student.isEmpty())teacher.put("mustChangePassword",student.get("mustChangePassword"));
+        student.ifPresent(identity -> teacher.put("mustChangePassword", identity.getMustChangePassword()));
         return new LoginResult(token, teacher);
     }
 
@@ -63,12 +65,11 @@ public class AuthService {
         UserAccount user = users.findById(scope.teacher())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "账号已失效"));
         if ("STUDENT".equals(user.getRole()))
-            user.setMustChangePassword((Boolean) studentIdentity(user.getId()).get("mustChangePassword"));
+            user.setMustChangePassword(studentIdentity(user.getId()).map(StudentIdentity::getMustChangePassword).orElse(null));
         return user;
     }
 
-    private Map<String,Object> studentIdentity(long userId) {
-        return db.query("select a.must_change_password,a.session_version from student_account a join student s on s.id=a.student_id where a.user_id=? and s.status='ACTIVE'",com.zhixiaojiang.common.util.RowMaps.mapper(),userId).stream().findFirst()
-                .orElseThrow(()->new ResponseStatusException(HttpStatus.UNAUTHORIZED,"账号未关联有效学生档案"));
+    private java.util.Optional<StudentIdentity> studentIdentity(long userId) {
+        return accounts.identityOfUser(userId);
     }
 }
