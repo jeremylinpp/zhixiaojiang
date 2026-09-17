@@ -53,12 +53,16 @@ public class SecurityConfig {
     }
 
     @Bean
-    SecurityFilterChain filterChain(HttpSecurity http, SessionRevocationService revocations, ObjectMapper json) throws Exception {
+    SecurityFilterChain filterChain(HttpSecurity http, SessionRevocationService revocations, ObjectMapper json, org.springframework.jdbc.core.JdbcTemplate db) throws Exception {
         var csrf = CookieCsrfTokenRepository.withHttpOnlyFalse();
         csrf.setHeaderName("X-CSRF-TOKEN");
         http.csrf(c -> c.csrfTokenRepository(csrf).ignoringRequestMatchers("/api/v1/auth/login")).cors(c -> c.configurationSource(corsConfigurationSource()))
-                .authorizeHttpRequests(a -> a.requestMatchers("/api/v1/auth/**", "/actuator/health").permitAll().anyRequest().authenticated())
-                .addFilterBefore(new JwtFilter(secret, revocations), UsernamePasswordAuthenticationFilter.class)
+                .authorizeHttpRequests(a -> a.requestMatchers("/api/v1/auth/login", "/api/v1/auth/csrf", "/actuator/health").permitAll()
+                        .requestMatchers("/api/v1/auth/**").authenticated()
+                        .requestMatchers("/api/v1/student-portal/**").hasRole("STUDENT")
+                        .anyRequest().hasRole("TEACHER"))
+                .sessionManagement(s -> s.sessionCreationPolicy(org.springframework.security.config.http.SessionCreationPolicy.STATELESS))
+                .addFilterBefore(new JwtFilter(secret, revocations, json, db), UsernamePasswordAuthenticationFilter.class)
                 .formLogin(f -> f.disable()).httpBasic(b -> b.disable())
                 .exceptionHandling(e -> e.authenticationEntryPoint((req, res, ex) -> {
                     res.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
@@ -84,10 +88,14 @@ public class SecurityConfig {
     static class JwtFilter extends OncePerRequestFilter {
         private final String secret;
         private final SessionRevocationService revocations;
+        private final ObjectMapper json;
+        private final org.springframework.jdbc.core.JdbcTemplate db;
 
-        JwtFilter(String secret, SessionRevocationService revocations) {
+        JwtFilter(String secret, SessionRevocationService revocations, ObjectMapper json, org.springframework.jdbc.core.JdbcTemplate db) {
             this.secret = secret;
             this.revocations = revocations;
+            this.json=json;
+            this.db=db;
         }
 
         protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain) throws ServletException, IOException {
@@ -95,14 +103,26 @@ public class SecurityConfig {
             if (token != null && !revocations.isRevoked(token)) {
                 String[] parts = token.split("\\.");
                 if (parts.length == 3 && SessionToken.sign(parts[0] + "." + parts[1], secret).equals(parts[2])) {
-                    String payload = new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
-                    long expires = longClaim(payload, "exp");
+                    try {
+                    var payload = json.readTree(Base64.getUrlDecoder().decode(parts[1]));
+                    long expires = payload.path("exp").asLong();
                     if (expires > Instant.now().getEpochSecond()) {
-                        String subject = stringClaim(payload, "sub");
-                        String username = stringClaim(payload, "username");
-                        String role = stringClaim(payload, "role");
+                        String subject = payload.path("sub").asText();
+                        String username = payload.path("username").asText();
+                        String role = payload.path("role").asText();
+                        long id=Long.parseLong(subject);
+                        boolean valid=id>0 && !username.isBlank() && List.of("TEACHER","STUDENT").contains(role);
+                        if(valid && "STUDENT".equals(role)) valid=!db.queryForList("select a.user_id from student_account a join sys_user u on u.id=a.user_id join student s on s.id=a.student_id where a.user_id=? and a.session_version=? and u.role='STUDENT' and s.status='ACTIVE'",Long.class,id,payload.path("sv").asLong()).isEmpty();
+                        if(valid) {
                         SecurityContextHolder.getContext().setAuthentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(username, null, List.of(new SimpleGrantedAuthority("ROLE_" + role))));
                         req.setAttribute("userId", subject);
+                        }
+                    }
+                    } catch (IllegalArgumentException | com.fasterxml.jackson.core.JsonProcessingException ignored) {
+                        SecurityContextHolder.clearContext();
+                    } catch (org.springframework.dao.DataAccessException unavailable) {
+                        res.setStatus(503);res.setContentType("application/json;charset=UTF-8");
+                        res.getWriter().write(json.writeValueAsString(ApiResult.fail("503","账号服务暂时不可用")));return;
                     }
                 }
             }
@@ -115,27 +135,5 @@ public class SecurityConfig {
             return null;
         }
 
-        private long longClaim(String payload, String name) {
-            String raw = claim(payload, name);
-            return raw == null ? 0 : Long.parseLong(raw);
-        }
-
-        private String stringClaim(String payload, String name) {
-            return claim(payload, name);
-        }
-
-        /**
-         * 极简声明解析，沿用与原实现一致的正则语义（贪婪匹配取最后一个同名声明）。
-         *
-         * <p>声明缺失或格式不符时返回 null，令牌因缺少教师 id 而被当作未登录处理。
-         * 严格解析（JSON 序列化与反序列化）以及对用户名引号的转义，见后续改造项。
-         */
-        private String claim(String payload, String name) {
-            String pattern = name.equals("exp")
-                    ? ".*\"exp\":([0-9]+).*"
-                    : ".*\"" + name + "\":\"([^\"]+).*";
-            String extracted = payload.replaceAll(pattern, "$1");
-            return extracted.equals(payload) ? null : extracted;
-        }
     }
 }

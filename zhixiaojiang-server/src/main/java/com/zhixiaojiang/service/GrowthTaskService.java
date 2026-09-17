@@ -7,6 +7,9 @@ import com.zhixiaojiang.common.util.RequestValues;
 import com.zhixiaojiang.dao.TaskMapper;
 import com.zhixiaojiang.model.po.GrowthTask;
 import com.zhixiaojiang.model.vo.TaskReward;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,11 +27,15 @@ public class GrowthTaskService {
     private final TaskMapper tasks;
     private final TeacherScope scope;
     private final AuditRecorder audit;
+    private final JdbcTemplate db;
+    private final StudentMessageService messages;
 
-    public GrowthTaskService(TaskMapper tasks, TeacherScope scope, AuditRecorder audit) {
+    public GrowthTaskService(TaskMapper tasks, TeacherScope scope, AuditRecorder audit, JdbcTemplate db, StudentMessageService messages) {
         this.tasks = tasks;
         this.scope = scope;
         this.audit = audit;
+        this.db = db;
+        this.messages=messages;
     }
 
     public Map<String, Object> list() {
@@ -56,7 +63,7 @@ public class GrowthTaskService {
         if (rawStudentIds instanceof Collection<?> studentIds) for (Object raw : studentIds) {
             long studentId = Long.parseLong(String.valueOf(raw));
             scope.requireStudent(studentId);
-            tasks.assign(taskId, studentId);
+            if(tasks.assign(taskId, studentId)>0)messages.send(studentId,"task-assigned:"+taskId,"收到新任务","教师为你指派了成长任务，请查看要求与截止日期。","任务");
         }
         audit.record("ASSIGN", "growth_task", taskId, "分配成长任务");
         return Map.of("saved", true);
@@ -70,14 +77,24 @@ public class GrowthTaskService {
 
     /** 教师确认完成：同一记录只发一次机智币。 */
     @Transactional
-    public Map<String, Object> complete(long studentTaskId, String note) {
-        scope.requireStudentTask(studentTaskId, true);
+    public Map<String, Object> complete(long studentTaskId, String note, Long submissionId) {
+        var assignment=scope.requireStudentTask(studentTaskId, true);
+        if (note!=null && note.length()>500) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"评价不能超过 500 字");
+        if ("RETURNED".equals(assignment.getStatus())) throw new ResponseStatusException(HttpStatus.CONFLICT,"请等待学生补充提交");
+        if ("SUBMITTED".equals(assignment.getStatus())) {
+            Long current=db.queryForObject("select max(id) from task_submission where student_task_id=?",Long.class,studentTaskId);
+            if (submissionId==null || !submissionId.equals(current)) throw new ResponseStatusException(HttpStatus.CONFLICT,"提交版本已变化，请查看最新成果后确认");
+            db.update("update task_submission set status='COMPLETED',feedback=?,reviewed_at=current_timestamp,reviewed_by=? where id=?",note,scope.teacher(),submissionId);
+        }
         int changed = tasks.complete(studentTaskId, note);
         if (changed == 1) {
             TaskReward reward = tasks.rewardOf(studentTaskId).orElseThrow();
             tasks.awardPoints(reward.getStudentId(), reward.getPointReward(),
                     "完成任务：" + reward.getTitle(), "task:" + studentTaskId, scope.teacher());
+            db.update("insert into activity_record(student_id,activity_date,activity_type,status,detail,created_by) values(?,curdate(),'六机任务','PARTICIPATED',?,?)",
+                    reward.getStudentId(), "完成任务："+reward.getTitle(),scope.teacher());
             audit.record("COMPLETE", "student_task", studentTaskId, "确认任务完成并发放机智币");
+            messages.send(reward.getStudentId(),"task-complete:"+studentTaskId,"任务已确认完成","任务评价与积分结果已更新，请查看。","任务");
         }
         return Map.of("saved", true, "awarded", changed == 1);
     }

@@ -2,6 +2,7 @@ package com.zhixiaojiang.controller;
 
 import com.zhixiaojiang.common.ApiResult;
 import com.zhixiaojiang.service.GrowthTaskService;
+import com.zhixiaojiang.service.TaskSubmissionService;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -11,9 +12,11 @@ import java.util.Map;
 @RequestMapping("/api/v1")
 public class GrowthTaskController {
     private final GrowthTaskService tasks;
+    private final TaskSubmissionService submissions;
 
-    public GrowthTaskController(GrowthTaskService tasks) {
+    public GrowthTaskController(GrowthTaskService tasks, TaskSubmissionService submissions) {
         this.tasks = tasks;
+        this.submissions=submissions;
     }
 
     @GetMapping("/growth-tasks")
@@ -38,7 +41,17 @@ public class GrowthTaskController {
 
     @PostMapping("/student-tasks/{id}/complete")
     Map<String, Object> complete(@PathVariable long id, @RequestBody(required = false) Map<String, Object> body) {
-        return ApiResult.ok(tasks.complete(id, body == null || body.get("note") == null ? null : String.valueOf(body.get("note"))));
+        return ApiResult.ok(tasks.complete(id, body == null || body.get("note") == null ? null : String.valueOf(body.get("note")), body==null || body.get("submissionId")==null ? null : Long.valueOf(body.get("submissionId").toString())));
+    }
+
+    @GetMapping("/student-tasks/{id}/submissions")
+    Map<String,Object> submissions(@PathVariable long id) { return ApiResult.ok(submissions.history(id,true)); }
+
+    public record ReturnRequest(long submissionId, String feedback) {}
+
+    @PostMapping("/student-tasks/{id}/return")
+    Map<String,Object> returnSubmission(@PathVariable long id,@RequestBody ReturnRequest body) {
+        return ApiResult.ok(submissions.returnForChanges(id,body.submissionId(),body.feedback()));
     }
 
     @PostMapping("/student-tasks/{id}/evaluate")

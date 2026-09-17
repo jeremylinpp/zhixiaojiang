@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import PageHeader from './ui/PageHeader.vue';
+import TaskAttachments, {type Attachment} from './TaskAttachments.vue';
 import EmptyState from './ui/EmptyState.vue';
 import {computed,onMounted,ref} from 'vue';
 import {request} from '../api';
@@ -7,10 +8,12 @@ import {request} from '../api';
 type Task={id:number;module:string;title:string;description:string|null;dueOn:string;pointReward:number;status:string};
 type Student={id:number;name:string;studentNo:string};
 type Assignment={id:number;studentId:number;studentName:string;status:string;completedOn:string|null;teacherNote:string|null};
+type Submission={id:number;content:string;status:string;feedback?:string;createdAt:string;attachments:Attachment[]};
+const submissionHistory=ref<Record<number,Submission[]>>({}),returnNote=ref<Record<number,string>>({});
 
 /** 六机模块固定在枚举内，避免自由文本导致统计口径混乱。 */
 const MODULES=['铸机魂','立机规','淬机质','铺机路','聚机力','调机态'];
-const STATUS:Record<string,string>={ASSIGNED:'待完成',COMPLETED:'已完成'};
+const STATUS:Record<string,string>={ASSIGNED:'待完成',SUBMITTED:'待评价',RETURNED:'需补充',COMPLETED:'已完成'};
 
 const tasks=ref<Task[]>([]),loading=ref(false),error=ref(''),notice=ref(''),busy=ref(false),formError=ref('');
 const creating=ref(false),students=ref<Student[]>([]),studentQuery=ref('');
@@ -43,6 +46,7 @@ async function inspect(task:Task){
   detailBusy.value=true;formError.value='';notice.value='';evaluatingId.value=0;evaluationNote.value='';
   try{
     selected.value=task;
+    submissionHistory.value={};returnNote.value={};
     assignments.value=(await request<{items:Assignment[]}>(`/growth-tasks/${task.id}/students`)).items;
     picked.value=[];
   }catch(e){formError.value=(e as Error).message;}finally{detailBusy.value=false;}
@@ -73,7 +77,7 @@ async function complete(row:Assignment){
   if(busy.value)return;
   busy.value=true;formError.value='';
   try{
-    const result=await request<{awarded:boolean}>(`/student-tasks/${row.id}/complete`,'POST',{});
+    const result=await request<{awarded:boolean}>(`/student-tasks/${row.id}/complete`,'POST',{submissionId:submissionHistory.value[row.id]?.[0]?.id,note:evaluatingId.value===row.id ? evaluationNote.value.trim()||undefined : undefined});
     notice.value=result.awarded?`已确认 ${row.studentName} 完成任务，并按任务奖励发放机智币。`:`该记录此前已确认，未重复发放机智币。`;
     await refreshDetail();
   }catch(e){formError.value=(e as Error).message;}finally{busy.value=false;}
@@ -89,6 +93,17 @@ async function evaluate(row:Assignment){
   }catch(e){formError.value=(e as Error).message;}finally{busy.value=false;}
 }
 function toggle(id:number){ picked.value=picked.value.includes(id)?picked.value.filter(x=>x!==id):[...picked.value,id]; }
+async function viewSubmissions(row:Assignment){
+  if(busy.value)return;busy.value=true;formError.value='';
+  try{submissionHistory.value[row.id]=(await request<{items:Submission[]}>(`/student-tasks/${row.id}/submissions`)).items;}
+  catch(e){formError.value=(e as Error).message;}finally{busy.value=false;}
+}
+async function returnSubmission(row:Assignment){
+  const latest=submissionHistory.value[row.id]?.[0];if(!latest||busy.value||!returnNote.value[row.id]?.trim())return;
+  busy.value=true;formError.value='';
+  try{await request(`/student-tasks/${row.id}/return`,'POST',{submissionId:latest.id,feedback:returnNote.value[row.id]?.trim()});await refreshDetail();notice.value='已退回，等待学生补充提交。';}
+  catch(e){formError.value=(e as Error).message;}finally{busy.value=false;}
+}
 onMounted(async()=>{ await loadTasks(); await loadStudents(); });
 </script>
 
@@ -159,9 +174,15 @@ onMounted(async()=>{ await loadTasks(); await loadStudents(); });
             </div>
             <p class="muted">{{ row.completedOn ? `完成于 ${row.completedOn}` : '尚未完成' }}<span v-if="row.teacherNote"> · {{ row.teacherNote }}</span></p>
             <div class="task-record-actions">
-              <button class="button" :disabled="busy || row.status === 'COMPLETED'" @click="complete(row)">确认完成并发币</button>
+              <button class="button" :disabled="busy || ['COMPLETED','RETURNED'].includes(row.status) || (row.status==='SUBMITTED' && !submissionHistory[row.id]?.length)" @click="complete(row)">确认完成并发币</button>
+              <button class="button" :disabled="busy" @click="viewSubmissions(row)">查看提交成果</button>
               <button class="button" :disabled="busy" @click="evaluatingId = evaluatingId === row.id ? 0 : row.id">{{ evaluatingId === row.id ? '取消评价' : '记录评价' }}</button>
             </div>
+            <section v-if="submissionHistory[row.id]" aria-label="提交历史">
+              <article v-for="submission in submissionHistory[row.id]" :key="submission.id"><p>{{STATUS[submission.status]}} · {{submission.createdAt}}</p><p style="white-space:pre-wrap;overflow-wrap:anywhere">{{submission.content}}</p><TaskAttachments :files="submission.attachments" teacher/><p v-if="submission.feedback">反馈：{{submission.feedback}}</p></article>
+              <p v-if="!submissionHistory[row.id]?.length" class="muted">暂无学生提交，可按线下完成情况确认。</p>
+              <form v-if="row.status==='SUBMITTED'" class="action-form" @submit.prevent="returnSubmission(row)"><label>需要补充的内容<textarea v-model="returnNote[row.id]" required maxlength="500" rows="2"/></label><button class="button" :disabled="busy || !returnNote[row.id]?.trim()">退回补充</button></form>
+            </section>
             <form v-if="evaluatingId === row.id" class="action-form" @submit.prevent="evaluate(row)">
               <label>评价说明<textarea v-model="evaluationNote" rows="2" maxlength="500" placeholder="记录完成质量与下一步建议"/></label>
               <button class="button primary dialog-done" :disabled="busy">{{ busy ? '保存中…' : '保存评价' }}</button>

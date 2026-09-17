@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import PageHeader from './ui/PageHeader.vue';
+import StudentAccountPanel from './StudentAccountPanel.vue';
+import StudentGrowthReview from './StudentGrowthReview.vue';
 import PaginationBar from './ui/PaginationBar.vue';
 import EmptyState from './ui/EmptyState.vue';
 import { onMounted, ref } from 'vue';
@@ -68,6 +70,8 @@ onMounted(load);
     <p v-if="loading" role="status">正在读取档案…</p>
     <section v-else-if="!error" class="data-card panel"><table><thead><tr><th>姓名</th><th>学号</th><th>性别</th><th>状态</th><th>操作</th></tr></thead><tbody><tr v-for="student in students" :key="student.id"><td>{{ student.name }}</td><td>{{ student.studentNo }}</td><td>{{ student.gender || '未填写' }}</td><td>在籍</td><td class="record-actions"><button class="table-action" @click="inspect(student.id)">查看详情</button><button class="table-action" @click="edit(student)">编辑</button><button class="table-action" @click="archive(student)">归档</button></td></tr><tr v-if="!students.length"><td colspan="5" class="empty-cell"><EmptyState :title="query.trim() ? '没有符合条件的学生' : '暂无学生档案'" :description="query.trim() ? '请修改姓名或学号后重新搜索。' : '点击新增学生，开始建立班级档案。'"/></td></tr></tbody></table></section>
     <PaginationBar :page="page" :page-size="pageSize" :total="total" :disabled="loading || !!error" @change="turn" @resize="resize"/>
+    <StudentAccountPanel v-if="detail" :key="detail.student.id" :student-id="detail.student.id"/>
+    <StudentGrowthReview v-if="detail" :key="detail.student.id" :student-id="detail.student.id"/>
     <section v-if="detail" class="panel record-detail"><header class="workspace-toolbar"><h2>{{ detail.student.name }} · 成长记录</h2><button class="button" @click="detail = undefined">收起</button></header><p v-if="!detail.timeline.length" class="muted">尚未录入成长记录。</p><article v-for="(record,index) in detail.timeline" :key="index" class="record-event"><strong>{{ record.title }}</strong><p>{{ record.detail || '无补充说明' }}</p><small>{{ record.occurredOn }} · {{ record.source }}</small></article></section>
     <dialog ref="editor" @cancel="saving && $event.preventDefault()"><header class="dialog-heading"><h2>{{ mode === 'archive' ? '归档学生' : mode === 'edit' ? '编辑学生' : '新增学生' }}</h2><button type="button" class="button" :disabled="saving" @click="editor?.close()">关闭</button></header><form class="action-form" @submit.prevent="save"><template v-if="mode === 'archive'"><p>确认归档“{{ draft.name }}”？该学生将从在籍列表移除，历史成长、积分和帮扶记录会保留。</p></template><template v-else><label>姓名<input v-model="draft.name" required maxlength="64"/></label><label>学号<input v-model="draft.studentNo" required maxlength="32"/></label><label>性别<select v-model="draft.gender"><option value="">未填写</option><option>男</option><option>女</option></select></label></template><p v-if="formError" role="alert" class="record-error">{{ formError }}</p><button class="button primary dialog-done" :disabled="saving">{{ saving ? '正在保存…' : mode === 'archive' ? '确认归档' : '保存' }}</button></form></dialog>
   </section>

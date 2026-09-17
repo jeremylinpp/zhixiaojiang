@@ -36,6 +36,7 @@ public class AuthController {
         var result = auth.login(body);
         Cookie cookie = new Cookie(SecurityConfig.SESSION_COOKIE, result.token());
         cookie.setHttpOnly(true);
+        cookie.setAttribute("SameSite","Lax");
         cookie.setSecure(secureCookie);
         cookie.setPath("/");
         cookie.setMaxAge((int) SessionToken.TTL_SECONDS);

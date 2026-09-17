@@ -25,12 +25,16 @@ public final class SessionToken {
 
     /** 签发令牌：{@code header.payload.signature}。 */
     public static String issue(long userId, String username, String role, String secret) {
+        return issue(userId,username,role,secret,0);
+    }
+
+    public static String issue(long userId, String username, String role, String secret, long version) {
         String header = encode(HEADER);
         String payload = encode("{\"jti\":\"" + UUID.randomUUID()
                 + "\",\"sub\":\"" + userId
-                + "\",\"username\":\"" + username
+                + "\",\"username\":\"" + username.replace("\\", "\\\\").replace("\"", "\\\"")
                 + "\",\"role\":\"" + role
-                + "\",\"exp\":" + (Instant.now().getEpochSecond() + TTL_SECONDS) + "}");
+                + "\",\"sv\":" + version + ",\"exp\":" + (Instant.now().getEpochSecond() + TTL_SECONDS) + "}");
         return header + "." + payload + "." + sign(header + "." + payload, secret);
     }
 

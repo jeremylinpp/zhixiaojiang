@@ -6,6 +6,10 @@ server:
       enabled: true
       force: true
 spring:
+  servlet:
+    multipart:
+      max-file-size: 2MB
+      max-request-size: 3MB
   profiles:
     default: local
   datasource:
@@ -24,7 +28,7 @@ spring:
     init:
       encoding: UTF-8
       mode: ${DB_INIT_MODE:never}
-      schema-locations: classpath:schema.sql
+      schema-locations: classpath:schema.sql,classpath:student-portal-schema.sql
       data-locations: classpath:data.sql
       continue-on-error: false
 app:

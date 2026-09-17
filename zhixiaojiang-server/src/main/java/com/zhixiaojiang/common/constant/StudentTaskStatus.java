@@ -3,6 +3,8 @@ package com.zhixiaojiang.common.constant;
 /** 学生任务状态：已指派、已完成。 */
 public enum StudentTaskStatus {
     ASSIGNED,
+    SUBMITTED,
+    RETURNED,
     COMPLETED;
 
     public static StudentTaskStatus of(String value) {

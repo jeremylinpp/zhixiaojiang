@@ -24,6 +24,11 @@ public class ApiExceptionHandler {
     return response(HttpStatus.CONFLICT, "该记录已存在，请检查学号或重复提交");
   }
 
+  @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+  ResponseEntity<Map<String,Object>> uploadTooLarge(org.springframework.web.multipart.MaxUploadSizeExceededException e) {
+    return response(HttpStatus.PAYLOAD_TOO_LARGE,"附件最大为 2 MiB，请压缩后重试");
+  }
+
   @ExceptionHandler(ResponseStatusException.class)
   ResponseEntity<Map<String,Object>> status(ResponseStatusException e) {
     return response(HttpStatus.valueOf(e.getStatusCode().value()), e.getReason() == null ? "请求失败" : e.getReason());

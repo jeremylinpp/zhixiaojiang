@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import PageHeader from './ui/PageHeader.vue';
+import StudentPlans from './StudentPlans.vue';
 import SegmentedControl from './ui/SegmentedControl.vue';
 import EmptyState from './ui/EmptyState.vue';
 import {onMounted,ref} from 'vue';
@@ -150,6 +151,7 @@ onMounted(()=>{newReview.value=defaultReview;load();});
       </table>
     </section>
 
+    <StudentPlans v-if="selected" :key="`${selected.id}-${selected.status}`" :teacher-plan-id="selected.id" :plan-status="selected.status"/>
     <section v-if="selected" class="panel plan-detail">
       <header class="plan-heading">
         <div>

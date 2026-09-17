@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import PixelPet from './components/PixelPet.vue';
+import StudentPortal from './components/StudentPortal.vue';
+import StudentPasswordForm from './components/StudentPasswordForm.vue';
 import StudentRecords from './components/StudentRecords.vue';
 import PointsPage from './components/PointsPage.vue';
 import TeacherProfile from './components/TeacherProfile.vue';
@@ -15,8 +17,12 @@ import { PanelLeft, Search, Bell, FlaskConical, Activity, LayoutDashboard, Radar
 /** 本地开发和正式构建均固定使用智小匠业务视图，忽略旧参考页参数。 */
 const school = computed(() => true);
 const loginPage = ref(location.pathname === '/login');
-const username = ref('teacher');
-const password = ref('password');
+const username = ref('');
+const password = ref('');
+const accountRole = ref('');
+const mustChangePassword = ref(false);
+const checkingSession = ref(true);
+const sessionError = ref('');
 const loginError = ref('');
 const signingIn = ref(false);
 const csrfToken = ref('');
@@ -84,13 +90,28 @@ function keys(e: KeyboardEvent) { if ((e.metaKey || e.ctrlKey) && e.key.toLowerC
 async function loadDashboard() { try { const res = await fetch(`${apiBase}/dashboard/class`, { credentials: 'include' }); if (!res.ok) throw new Error('backend unavailable'); const body = await res.json(); dashboard.value = body.data ?? {}; live.value = true; liveError.value = ''; } catch { live.value = false; liveError.value = '数据读取失败，请检查登录状态和服务连接'; } }
 async function signIn() { signingIn.value = true; loginError.value = ''; try { const res = await fetch(`${apiBase}/auth/login`, { method: 'POST', credentials: 'include', headers: {'Content-Type':'application/json'}, body: JSON.stringify({username: username.value, password: password.value}) }); if (!res.ok) throw new Error('登录失败'); location.href = '/?view=school'; } catch { loginError.value = '暂时无法登录，请检查后端服务或账号密码'; } finally { signingIn.value = false; } }
 async function logout() { try { if (!csrfToken.value) await loadCsrf(); const headers: Record<string,string> = {}; if (csrfToken.value) headers['X-CSRF-TOKEN'] = csrfToken.value; await fetch(`${apiBase}/auth/logout`, { method: 'POST', credentials: 'include', headers }); } catch { /* allow local preview logout when backend is offline */ } finally { location.href = '/login'; } }
-onMounted(() => { document.addEventListener('keydown', keys); loadCsrf(); loadDashboard(); });
+async function initializeSession() {
+  if(loginPage.value){checkingSession.value=false;return;}
+  checkingSession.value=true;sessionError.value='';
+  try{
+    const response=await fetch(`${apiBase}/auth/me`,{credentials:'include'});
+    if(response.status===401){location.href='/login';return;}
+    if(!response.ok)throw new Error('暂时无法读取登录状态，请重试');
+    const body=await response.json();accountRole.value=body.data.role;mustChangePassword.value=body.data.mustChangePassword===true;
+    if(!['STUDENT','TEACHER'].includes(accountRole.value))throw new Error('当前账号没有可用的工作台权限');
+    if(accountRole.value==='TEACHER')await loadDashboard();
+  }catch(e){sessionError.value=(e as Error).message;}finally{checkingSession.value=false;}
+}
+onMounted(() => { document.addEventListener('keydown', keys); loadCsrf(); initializeSession(); });
 watch(active, () => { const url = new URL(location.href); url.searchParams.set('page', active.value); history.replaceState(null, '', url); });
 onUnmounted(() => document.removeEventListener('keydown', keys));
 </script>
 
 <template>
-  <div v-if="loginPage" class="login-shell"><section class="login-card panel"><div class="login-brand"><img src="/favicon.svg" alt=""/><strong>智小匠</strong></div><p class="eyebrow">班主任工作台</p><h1>欢迎回来</h1><p class="login-copy">登录后继续管理班级成长与帮扶闭环。</p><form @submit.prevent="signIn"><label>账号<input v-model="username" autocomplete="username" required /></label><label>密码<input v-model="password" type="password" autocomplete="current-password" required /></label><p v-if="loginError" class="login-error">{{ loginError }}</p><button class="button primary login-submit" :disabled="signingIn">{{ signingIn ? '登录中…' : '进入工作台' }}<ArrowRight/></button></form><small>请使用管理员分配的账号登录；口令不在此页展示。</small></section></div>
+  <div v-if="loginPage" class="login-shell"><section class="login-card panel"><div class="login-brand"><img src="/favicon.svg" alt=""/><strong>智小匠</strong></div><p class="eyebrow">学生成长与班级治理平台</p><h1>欢迎回来</h1><p class="login-copy">使用教师或学生账号登录，进入对应的工作台。</p><form @submit.prevent="signIn"><label>账号<input v-model="username" autocomplete="username" required /></label><label>密码<input v-model="password" type="password" autocomplete="current-password" required /></label><p v-if="loginError" class="login-error">{{ loginError }}</p><button class="button primary login-submit" :disabled="signingIn">{{ signingIn ? '登录中…' : '进入工作台' }}<ArrowRight/></button></form><small>请使用管理员分配的账号登录；口令不在此页展示。</small></section></div>
+  <div v-else-if="checkingSession || sessionError" class="login-shell"><section class="login-card panel"><p v-if="checkingSession" role="status">正在确认登录身份…</p><template v-else><p role="alert">{{sessionError}}</p><button class="button" @click="initializeSession">重试</button><button class="button" @click="logout">退出登录</button></template></section></div>
+  <div v-else-if="accountRole==='STUDENT' && mustChangePassword" class="login-shell"><div><StudentPasswordForm required/><button class="button" @click="logout">退出登录</button></div></div>
+  <StudentPortal v-else-if="accountRole==='STUDENT'" @logout="logout"/>
   <div v-else class="application" :class="{ collapsed }">
     <header class="topbar">
       <div class="brand-area">
