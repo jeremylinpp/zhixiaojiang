@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 学生档案与成长明细；动态条件用 foreach/if 表达，列名保持库内真实名称，靠 mapUnderscoreToCamelCase 映射到属性。 -->
+<mapper namespace="com.zhixiaojiang.dao.StudentMapper">
+
+    <sql id="classFilter">
+        and s.class_id in
+        <foreach collection="classIds" item="classId" open="(" separator="," close=")">#{classId}</foreach>
+    </sql>
+
+    <select id="page" resultType="com.zhixiaojiang.model.vo.StudentListRow">
+        select s.id, s.student_no, s.name, s.gender, s.status,
+               coalesce(round(avg(g.score), 1), 0) growth_index
+        from student s
+        left join growth_record g on g.student_id = s.id
+        where s.status = 'ACTIVE'
+        <include refid="classFilter"/>
+        <if test="like != null and like != ''">
+            and (s.name like #{like} or s.student_no like #{like})
+        </if>
+        group by s.id, s.student_no, s.name, s.gender, s.status
+        order by s.id
+        limit #{size} offset #{offset}
+    </select>
+
+    <select id="countActive" resultType="int">
+        select count(*)
+        from student s
+        where s.status = 'ACTIVE'
+        <include refid="classFilter"/>
+        <if test="like != null and like != ''">
+            and (s.name like #{like} or s.student_no like #{like})
+        </if>
+    </select>
+
+    <select id="findById" resultType="com.zhixiaojiang.model.po.Student">
+        select * from student where id = #{id}
+    </select>
+
+    <select id="findSummary" resultType="com.zhixiaojiang.model.vo.StudentSummary">
+        select id, student_no, name, gender, status from student where id = #{id}
+    </select>
+
+    <select id="growthByDimension" resultType="com.zhixiaojiang.model.vo.DimensionScore">
+        select dimension, round(avg(score), 1) score
+        from growth_record
+        where student_id = #{studentId}
+        group by dimension
+    </select>
+
+    <select id="scores" resultType="com.zhixiaojiang.model.vo.ScoreRow">
+        select subject, exam_name, score, full_score, occurred_on
+        from score_record
+        where student_id = #{studentId}
+        order by occurred_on
+    </select>
+
+    <select id="timeline" resultType="com.zhixiaojiang.model.vo.TimelineRow">
+        select title, detail, occurred_on, source
+        <if test="withAuthor">, created_by</if>
+        from growth_record
+        where student_id = #{studentId}
+        order by occurred_on desc
+    </select>
+
+    <select id="attendance" resultType="com.zhixiaojiang.model.vo.AttendanceRow">
+        select id, attendance_date, status, note, created_by
+        from attendance_record
+        where student_id = #{studentId}
+        order by attendance_date desc
+    </select>
+
+    <select id="behavior" resultType="com.zhixiaojiang.model.vo.BehaviorRow">
+        select id, category, score, occurred_on, detail, created_by
+        from behavior_record
+        where student_id = #{studentId}
+        order by occurred_on desc
+    </select>
+
+    <select id="skills" resultType="com.zhixiaojiang.model.vo.SkillRow">
+        select id, skill_name, score, level, occurred_on, evidence, created_by
+        from skill_record
+        where student_id = #{studentId}
+        order by occurred_on desc
+    </select>
+
+    <select id="evaluations" resultType="com.zhixiaojiang.model.vo.EvaluationRow">
+        select id, period_start, period_end, moral_score, skill_score, thinking_score, smart_score, evidence, created_by
+        from dimension_evaluation
+        where student_id = #{studentId}
+        order by period_end desc
+    </select>
+
+    <insert id="insertBehavior" useGeneratedKeys="true" keyProperty="id">
+        insert into behavior_record (student_id, category, score, occurred_on, detail, created_by)
+        values (#{studentId}, #{category}, #{score}, #{occurredOn}, #{detail}, #{createdBy})
+    </insert>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        insert into student (class_id, student_no, name, gender, status)
+        values (#{classId}, #{studentNo}, #{name}, #{gender}, #{status})
+    </insert>
+
+    <update id="update">
+        update student set name = #{name}, gender = #{gender}, student_no = #{studentNo} where id = #{id}
+    </update>
+
+    <update id="archive">
+        update student set status = #{status}, archived_at = now() where id = #{id}
+    </update>
+</mapper>

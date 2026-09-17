@@ -1,0 +1,24 @@
+# 测试专用配置：demo profile 使用内存 H2，绝不连接线上 MySQL/Redis。
+# 放在 src/test/resources 下，因此不会被生产构建打进 jar。
+#
+# schema 同时加载主库结构与学生端附加结构（student-portal-schema.sql）；
+# 数据用 demo-data.sql（虚构学生），与线上库无关。
+spring:
+  datasource:
+    url: jdbc:h2:mem:zhixiaojiang;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 16379
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:demo-schema.sql,classpath:student-portal-schema.sql
+      data-locations: classpath:demo-data.sql
+server:
+  port: 8082
+app:
+  redis-enabled: false
