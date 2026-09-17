@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zhixiaojiang.dao.DashboardMapper">
+
+  <resultMap id="attendanceSummary" type="com.zhixiaojiang.model.vo.AttendanceSummary">
+    <result column="registered_count" property="registeredCount"/>
+    <result column="attendance_rate" property="attendanceRate"/>
+  </resultMap>
+
+  <resultMap id="classTarget" type="com.zhixiaojiang.model.vo.ClassTargetRow">
+    <result column="name" property="name"/>
+    <result column="target_value" property="targetValue"/>
+    <result column="current_value" property="currentValue"/>
+    <result column="unit" property="unit"/>
+    <result column="status" property="status"/>
+  </resultMap>
+
+  <resultMap id="warningBrief" type="com.zhixiaojiang.model.vo.WarningBrief">
+    <id column="id" property="id"/>
+    <result column="level" property="level"/>
+    <result column="summary" property="summary"/>
+    <result column="student_name" property="studentName"/>
+  </resultMap>
+
+  <!-- 班级范围由教师授权结果给出；服务层保证非空，foreach 才不会被展开成非法 SQL -->
+  <sql id="activeStudentsOfClasses">
+    from student s
+    where s.class_id in
+    <foreach item="classId" collection="classIds" open="(" separator="," close=")">#{classId}</foreach>
+    and s.status = 'ACTIVE'
+  </sql>
+
+  <select id="countActiveStudents" resultType="int">
+    select count(*)
+    from student s
+    where s.class_id in
+    <foreach item="classId" collection="classIds" open="(" separator="," close=")">#{classId}</foreach>
+    and s.status = 'ACTIVE'
+  </select>
+
+  <select id="latestAttendanceDate" resultType="java.time.LocalDate">
+    select max(ar.attendance_date)
+    from attendance_record ar
+    join student s on s.id = ar.student_id
+    where s.class_id in
+    <foreach item="classId" collection="classIds" open="(" separator="," close=")">#{classId}</foreach>
+    and s.status = 'ACTIVE'
+  </select>
+
+  <select id="attendanceSummary" resultMap="attendanceSummary">
+    select count(*) as registered_count,
+           round(100.0 * sum(case when ar.status in ('PRESENT', 'LATE') then 1 else 0 end) / nullif(count(*), 0), 1) as attendance_rate
+    from attendance_record ar
+    join student s on s.id = ar.student_id
+    where s.class_id in
+    <foreach item="classId" collection="classIds" open="(" separator="," close=")">#{classId}</foreach>
+    and s.status = 'ACTIVE'
+    and ar.attendance_date = #{date}
+  </select>
+
+  <select id="targets" resultMap="classTarget">
+    select name, target_value, current_value, unit, status
+    from class_target
+    where class_id in
+    <foreach item="classId" collection="classIds" open="(" separator="," close=")">#{classId}</foreach>
+    order by id
+  </select>
+
+  <select id="openWarnings" resultMap="warningBrief">
+    select w.id, w.level, w.summary, s.name as student_name
+    from warning_record w
+    join student s on s.id = w.student_id
+    where s.class_id in
+    <foreach item="classId" collection="classIds" open="(" separator="," close=")">#{classId}</foreach>
+    and w.status = 'OPEN'
+    order by w.created_at desc
+    limit 50
+  </select>
+</mapper>

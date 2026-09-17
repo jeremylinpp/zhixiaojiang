@@ -2,8 +2,8 @@ package com.zhixiaojiang.service;
 
 import com.zhixiaojiang.auth.TeacherScope;
 import com.zhixiaojiang.common.AuditRecorder;
-import com.zhixiaojiang.dao.ClassRoomDao;
-import com.zhixiaojiang.dao.UserDao;
+import com.zhixiaojiang.dao.ClassRoomMapper;
+import com.zhixiaojiang.dao.UserMapper;
 import com.zhixiaojiang.model.dto.ProfileEditRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -15,12 +15,12 @@ import java.util.Map;
 /** 教师资料与任教班级。 */
 @Service
 public class ProfileService {
-    private final UserDao users;
-    private final ClassRoomDao classes;
+    private final UserMapper users;
+    private final ClassRoomMapper classes;
     private final TeacherScope scope;
     private final AuditRecorder audit;
 
-    public ProfileService(UserDao users, ClassRoomDao classes, TeacherScope scope, AuditRecorder audit) {
+    public ProfileService(UserMapper users, ClassRoomMapper classes, TeacherScope scope, AuditRecorder audit) {
         this.users = users;
         this.classes = classes;
         this.scope = scope;

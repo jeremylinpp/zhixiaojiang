@@ -7,6 +7,7 @@ import com.zhixiaojiang.common.util.JsonValues;
 import com.zhixiaojiang.common.util.RequestValues;
 import com.zhixiaojiang.dao.InterventionMapper;
 import com.zhixiaojiang.model.po.InterventionPlan;
+import com.zhixiaojiang.model.vo.PlanOwnership;
 import com.zhixiaojiang.model.po.InterventionRecord;
 import com.zhixiaojiang.model.dto.InterventionRequest;
 import org.springframework.http.HttpStatus;
@@ -82,8 +83,8 @@ public class InterventionService {
 
     @Transactional
     public Map<String, Object> transition(long planId, String nextStatus) {
-        Map<String, Object> plan = scope.requirePlan(planId, true);
-        InterventionStatus current = InterventionStatus.of(String.valueOf(plan.get("status")));
+        PlanOwnership plan = scope.requirePlan(planId, true);
+        InterventionStatus current = InterventionStatus.of(plan.getStatus());
         InterventionStatus target = InterventionStatus.of(nextStatus == null ? "" : nextStatus);
         if (current == null || target == null || !current.allowedNext().contains(target))
             throw new ResponseStatusException(HttpStatus.CONFLICT, "非法帮扶状态转换");

@@ -80,8 +80,8 @@ public class GrowthTaskService {
     public Map<String, Object> complete(long studentTaskId, String note, Long submissionId) {
         var assignment=scope.requireStudentTask(studentTaskId, true);
         if (note!=null && note.length()>500) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"评价不能超过 500 字");
-        if ("RETURNED".equals(assignment.get("status"))) throw new ResponseStatusException(HttpStatus.CONFLICT,"请等待学生补充提交");
-        if ("SUBMITTED".equals(assignment.get("status"))) {
+        if ("RETURNED".equals(assignment.getStatus())) throw new ResponseStatusException(HttpStatus.CONFLICT,"请等待学生补充提交");
+        if ("SUBMITTED".equals(assignment.getStatus())) {
             Long current=db.queryForObject("select max(id) from task_submission where student_task_id=?",Long.class,studentTaskId);
             if (submissionId==null || !submissionId.equals(current)) throw new ResponseStatusException(HttpStatus.CONFLICT,"提交版本已变化，请查看最新成果后确认");
             db.update("update task_submission set status='COMPLETED',feedback=?,reviewed_at=current_timestamp,reviewed_by=? where id=?",note,scope.teacher(),submissionId);

@@ -7,7 +7,12 @@ import org.springframework.stereotype.Repository;
 import java.util.Map;
 import java.util.Optional;
 
-/** 教师账号数据访问。 */
+/**
+ * 教师账号数据访问（临时保留）。
+ *
+ * <p>账号读取已迁到 {@link UserMapper}，本类只剩部署在 HEAD 上的 AuthService 还在用；
+ * 等该文件的在途改动（学生端登录）提交后即可删除。
+ */
 @Repository
 public class UserDao {
     private final JdbcTemplate db;

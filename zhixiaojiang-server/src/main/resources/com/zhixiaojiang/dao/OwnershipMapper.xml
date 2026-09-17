@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zhixiaojiang.dao.OwnershipMapper">
+
+  <resultMap id="planOwnership" type="com.zhixiaojiang.model.vo.PlanOwnership">
+    <id column="id" property="id"/>
+    <result column="student_id" property="studentId"/>
+    <result column="status" property="status"/>
+  </resultMap>
+
+  <resultMap id="taskRow" type="com.zhixiaojiang.model.vo.TaskRow">
+    <id column="id" property="id"/>
+    <result column="module" property="module"/>
+    <result column="title" property="title"/>
+    <result column="point_reward" property="pointReward"/>
+    <result column="status" property="status"/>
+  </resultMap>
+
+  <resultMap id="studentTaskOwnership" type="com.zhixiaojiang.model.vo.StudentTaskOwnership">
+    <id column="id" property="id"/>
+    <result column="student_id" property="studentId"/>
+    <result column="status" property="status"/>
+    <result column="point_reward" property="pointReward"/>
+    <result column="title" property="title"/>
+  </resultMap>
+
+  <resultMap id="classBrief" type="com.zhixiaojiang.model.vo.ClassBrief">
+    <id column="id" property="id"/>
+    <result column="name" property="name"/>
+    <result column="grade" property="grade"/>
+  </resultMap>
+
+  <select id="classIdsOf" resultType="long">
+    select id from class_room where teacher_id = #{teacherId} order by id
+  </select>
+
+  <!-- 归属判定用“查得到行即归属”，与旧实现一致：聚合函数不能与 for update 同时使用 -->
+  <select id="classOwnedBy" resultType="long">
+    select id from class_room where id = #{classId} and teacher_id = #{teacherId}
+    <if test="lock">for update</if>
+  </select>
+
+  <select id="studentOwnedBy" resultType="long">
+    select s.id
+    from student s join class_room c on c.id = s.class_id
+    where s.id = #{studentId} and c.teacher_id = #{teacherId}
+    <if test="lock">for update</if>
+  </select>
+
+  <select id="planOwnedBy" resultMap="planOwnership">
+    select i.id, i.student_id, i.status
+    from intervention_plan i
+    join student s on s.id = i.student_id
+    join class_room c on c.id = s.class_id
+    where i.id = #{planId} and c.teacher_id = #{teacherId}
+    <if test="lock">for update</if>
+  </select>
+
+  <select id="targetClassOwnedBy" resultType="long">
+    select t.class_id
+    from class_target t join class_room c on c.id = t.class_id
+    where t.id = #{targetId} and c.teacher_id = #{teacherId}
+  </select>
+
+  <select id="taskOwnedBy" resultMap="taskRow">
+    select id, module, title, point_reward, status
+    from growth_task
+    where id = #{taskId} and created_by = #{teacherId}
+    <if test="lock">for update</if>
+  </select>
+
+  <select id="studentTaskOwnedBy" resultMap="studentTaskOwnership">
+    select st.id, st.student_id, st.status, g.point_reward, g.title
+    from student_task st
+    join growth_task g on g.id = st.task_id
+    join student s on s.id = st.student_id
+    join class_room c on c.id = s.class_id
+    where st.id = #{studentTaskId} and c.teacher_id = #{teacherId} and g.created_by = #{teacherId}
+    <if test="lock">for update</if>
+  </select>
+
+  <select id="classOf" resultMap="classBrief">
+    select id, name, grade from class_room where id = #{classId}
+  </select>
+</mapper>

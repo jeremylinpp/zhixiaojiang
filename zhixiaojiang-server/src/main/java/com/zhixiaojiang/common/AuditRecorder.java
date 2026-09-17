@@ -1,7 +1,8 @@
 package com.zhixiaojiang.common;
 
 import com.zhixiaojiang.auth.CurrentTeacher;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.zhixiaojiang.dao.AuditMapper;
+import com.zhixiaojiang.model.po.AuditLog;
 import org.springframework.stereotype.Component;
 
 /**
@@ -9,11 +10,11 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class AuditRecorder {
-    private final JdbcTemplate db;
+    private final AuditMapper audit;
     private final CurrentTeacher current;
 
-    public AuditRecorder(JdbcTemplate db, CurrentTeacher current) {
-        this.db = db;
+    public AuditRecorder(AuditMapper audit, CurrentTeacher current) {
+        this.audit = audit;
         this.current = current;
     }
 
@@ -24,6 +25,12 @@ public class AuditRecorder {
 
     /** 已解析出教师 id 时直接记录。 */
     public void record(long actor, String action, String entityType, long entityId, String summary) {
-        db.update("insert into audit_log(actor_id,action,entity_type,entity_id,summary) values(?,?,?,?,?)", actor, action, entityType, entityId, summary);
+        AuditLog record = new AuditLog();
+        record.setActorId(actor);
+        record.setAction(action);
+        record.setEntityType(entityType);
+        record.setEntityId(entityId);
+        record.setSummary(summary);
+        audit.insert(record);
     }
 }
