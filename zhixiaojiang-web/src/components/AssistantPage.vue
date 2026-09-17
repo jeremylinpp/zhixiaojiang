@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from './ui/PageHeader.vue';
 import {onMounted,ref} from 'vue';
 import StudentPicker from './StudentPicker.vue';
 import {request} from '../api';
@@ -56,10 +57,7 @@ onMounted(load);
 
 <template>
   <section class="page-scroll workspace-page">
-    <header class="workspace-heading">
-      <div><p class="eyebrow">以数据为依据的育人辅助入口</p><h1>智小匠助手</h1><p>助手只做数据归纳与建议，结论与处置由班主任作出。</p></div>
-      <button class="button" :disabled="loading" @click="load">{{ loading ? '读取中…' : '刷新状态' }}</button>
-    </header>
+    <PageHeader title="智小匠助手" eyebrow="以数据为依据的育人辅助入口" description="助手只做数据归纳与建议，结论与处置由班主任作出。"><button class="button" :disabled="loading" @click="load">{{ loading ? '读取中…' : '刷新状态' }}</button></PageHeader>
 
     <p v-if="error" class="assistant-error" role="alert">{{ error }} <button class="button" @click="load">重试</button></p>
     <p v-if="notice" class="assistant-notice" role="status">{{ notice }}</p>

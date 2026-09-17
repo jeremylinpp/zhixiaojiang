@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import PageHeader from './ui/PageHeader.vue';
+import EmptyState from './ui/EmptyState.vue';
 import {computed,onMounted,ref} from 'vue';
 import {request} from '../api';
 
@@ -92,10 +94,7 @@ onMounted(async()=>{ await loadTasks(); await loadStudents(); });
 
 <template>
   <section class="page-scroll workspace-page">
-    <header class="workspace-heading">
-      <div><p class="eyebrow">铸机魂 · 立机规 · 淬机质 · 铺机路 · 聚机力 · 调机态</p><h1>六机任务</h1><p>发布任务、指派学生，教师确认完成后发放机智币；重复确认不会重复发币。</p></div>
-      <button class="button primary" @click="creating = !creating">{{ creating ? '收起新建' : '发布任务' }}</button>
-    </header>
+    <PageHeader title="六机任务" eyebrow="铸机魂 · 立机规 · 淬机质 · 铺机路 · 聚机力 · 调机态" description="发布任务、指派学生，教师确认完成后发放机智币；重复确认不会重复发币。"><button class="button primary" @click="creating = !creating">{{ creating ? '收起新建' : '发布任务' }}</button></PageHeader>
 
     <section v-if="creating" class="panel task-create">
       <h2>发布成长任务</h2>
@@ -126,7 +125,7 @@ onMounted(async()=>{ await loadTasks(); await loadStudents(); });
             <td>{{ task.pointReward > 0 ? '+' + task.pointReward : '无' }}</td>
             <td><button class="table-action" @click="inspect(task)">指派与完成情况</button></td>
           </tr>
-          <tr v-if="!tasks.length"><td colspan="5" class="empty-cell">尚未发布成长任务</td></tr>
+          <tr v-if="!tasks.length"><td colspan="5" class="empty-cell"><EmptyState title="尚未发布成长任务" description="点击发布任务，安排学生成长活动。"/></td></tr>
         </tbody>
       </table>
     </section>

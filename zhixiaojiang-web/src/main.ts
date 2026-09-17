@@ -7,4 +7,5 @@ import App from './App.vue';
 import './style.css';
 import './login.css';
 import './navigation.css';
+import './business-ui.css';
 createApp(App).mount('#app');

@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import PageHeader from './ui/PageHeader.vue';
+import SegmentedControl from './ui/SegmentedControl.vue';
+import EmptyState from './ui/EmptyState.vue';
 import {onMounted,ref} from 'vue';
 import StudentPicker from './StudentPicker.vue';
 import {request} from '../api';
@@ -108,10 +111,7 @@ onMounted(()=>{newReview.value=defaultReview;load();});
 
 <template>
   <section class="page-scroll workspace-page">
-    <header class="workspace-heading">
-      <div><p class="eyebrow">教师审核与执行过程</p><h1>一人一策</h1><p>AI 与规则只提供建议，方案需教师确认后才能进入执行中。</p></div>
-      <button class="button primary" @click="creating = !creating">{{ creating ? '收起新建' : '新建帮扶方案' }}</button>
-    </header>
+    <PageHeader title="一人一策" eyebrow="教师审核与执行过程" description="AI 与规则只提供建议，方案需教师确认后才能进入执行中。"><button class="button primary" @click="creating = !creating">{{ creating ? '收起新建' : '新建帮扶方案' }}</button></PageHeader>
 
     <section v-if="creating" class="panel plan-create">
       <h2>新建帮扶草案</h2>
@@ -125,7 +125,7 @@ onMounted(()=>{newReview.value=defaultReview;load();});
     </section>
 
     <div class="plan-filters">
-      <button v-for="item in FILTERS" :key="item.value" class="button" :class="{ selected: filter === item.value }" @click="filter = item.value">{{ item.label }}</button>
+      <SegmentedControl v-model="filter" :options="FILTERS" label="帮扶状态"/>
       <input v-model="query" class="plan-search" aria-label="按学生或方案标题搜索" placeholder="学生或方案标题"/>
       <span class="result-count">{{ items.filter(visible).length }} / {{ items.length }} 个方案</span>
     </div>
@@ -145,7 +145,7 @@ onMounted(()=>{newReview.value=defaultReview;load();});
             <td>{{ item.reviewAt || '待安排' }}</td>
             <td><button class="table-action" @click="inspect(item.id)">审核与记录</button></td>
           </tr>
-          <tr v-if="!items.filter(visible).length"><td colspan="5" class="empty-cell">没有符合条件的方案</td></tr>
+          <tr v-if="!items.filter(visible).length"><td colspan="5" class="empty-cell"><EmptyState  :title="items.length ? '没有符合条件的方案' : '暂无帮扶方案'" :description="items.length ? '请切换状态或修改搜索条件。' : '点击新建帮扶方案，为学生建立支持计划。'"/></td></tr>
         </tbody>
       </table>
     </section>
@@ -207,7 +207,7 @@ onMounted(()=>{newReview.value=defaultReview;load();});
 .plan-create{padding:20px;margin-bottom:18px}
 .plan-create h2{font-size:18px;margin-bottom:14px}
 .plan-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px}
-.plan-filters .selected{background:#e5e4de;font-weight:600}
+
 .plan-search{font:inherit;margin-left:auto;border:1px solid var(--border);border-radius:5px;background:#fffdf9;padding:7px 9px;min-width:200px}
 .plan-detail{padding:20px;margin-top:18px}
 .plan-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}

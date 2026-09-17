@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import PageHeader from './ui/PageHeader.vue';
+import SegmentedControl from './ui/SegmentedControl.vue';
+import PaginationBar from './ui/PaginationBar.vue';
+import EmptyState from './ui/EmptyState.vue';
 import {onMounted,ref} from 'vue';
 import {request} from '../api';
 type Warning={id:number;studentId:number;studentName:string;studentNo:string;level:string;status:string;summary:string;ruleCode:string;teacherNote:string|null;createdAt:string;evidence:unknown[]};
@@ -10,7 +14,7 @@ const STATUS:Record<string,string>={OPEN:'待研判',REVIEWED:'已研判',CLOSED
 const TONE:Record<string,string>={重点关注:'danger',人工研判:'danger',关注:'warning',待研判:'warning',正常:'success',已研判:'success',已关闭:'success'};
 const FILTERS=[{value:'OPEN',label:'待研判'},{value:'REVIEWED',label:'已研判'},{value:'CLOSED',label:'已关闭'},{value:'ALL',label:'全部'}];
 
-const items=ref<Warning[]>([]),total=ref(0),page=ref(1),pageSize=20;
+const items=ref<Warning[]>([]),total=ref(0),page=ref(1),pageSize=ref(20);
 const status=ref('OPEN'),query=ref('');
 const loading=ref(false),error=ref(''),notice=ref('');
 const selected=ref<Warning>(),events=ref<Event[]>([]),detailBusy=ref(false);
@@ -22,9 +26,11 @@ async function load(){
   const current=++generation;
   loading.value=true;error.value='';
   try{
-    const data=await request<{items:Warning[];total:number}>(`/warnings?status=${status.value}&q=${encodeURIComponent(query.value.trim())}&page=${page.value}&pageSize=${pageSize}`);
+    const data=await request<{items:Warning[];total:number}>(`/warnings?status=${status.value}&q=${encodeURIComponent(query.value.trim())}&page=${page.value}&pageSize=${pageSize.value}`);
     if(current!==generation)return;
     items.value=data.items;total.value=data.total;
+    const lastPage=Math.max(1,Math.ceil(data.total/pageSize.value));
+    if(page.value>lastPage){page.value=lastPage;await load();}
   }catch(e){if(current===generation)error.value=(e as Error).message;}finally{if(current===generation)loading.value=false;}
 }
 async function inspect(id:number){
@@ -81,19 +87,17 @@ async function runAnalyzeRules(){
 }
 function search(){page.value=1;selected.value=undefined;load();}
 function switchStatus(value:string){status.value=value;page.value=1;selected.value=undefined;load();}
-function turn(delta:number){page.value+=delta;selected.value=undefined;load();}
+function turn(next:number){page.value=next;selected.value=undefined;load();}
+function resize(size:number){pageSize.value=size;page.value=1;selected.value=undefined;load();}
 onMounted(load);
 </script>
 
 <template>
   <section class="page-scroll workspace-page">
-    <header class="workspace-heading">
-      <div><p class="eyebrow">规则筛查与教师研判</p><h1>智能预警</h1><p>规则引擎只提供趋势事实，最终判断由班主任完成。</p></div>
-      <button class="button primary" :disabled="busy" @click="runAnalyzeRules">{{ busy ? '分析中…' : '执行规则分析' }}</button>
-    </header>
+    <PageHeader title="智能预警" eyebrow="规则筛查与教师研判" description="规则引擎只提供趋势事实，最终判断由班主任完成。"><button class="button primary" :disabled="busy" @click="runAnalyzeRules">{{ busy ? '分析中…' : '执行规则分析' }}</button></PageHeader>
 
     <div class="warning-filters">
-      <button v-for="filter in FILTERS" :key="filter.value" class="button" :class="{ selected: status === filter.value }" @click="switchStatus(filter.value)">{{ filter.label }}</button>
+      <SegmentedControl :model-value="status" :options="FILTERS" label="预警状态" :disabled="loading" @update:model-value="switchStatus"/>
       <form class="warning-search" @submit.prevent="search">
         <input v-model="query" aria-label="按学生或预警内容搜索" placeholder="学生姓名、学号或预警内容"/>
         <button class="button" :disabled="loading">搜索</button>
@@ -118,7 +122,7 @@ onMounted(load);
             <td>{{ item.createdAt.replace('T', ' ').slice(0, 16) }}</td>
             <td><button class="table-action" @click="inspect(item.id)">查看详情</button></td>
           </tr>
-          <tr v-if="!items.length"><td colspan="7" class="empty-cell">当前筛选条件下没有预警</td></tr>
+          <tr v-if="!items.length"><td colspan="7" class="empty-cell"><EmptyState title="当前筛选条件下没有预警" description="可切换状态或修改搜索条件；新增成长数据后可重新执行规则分析。"/></td></tr>
         </tbody>
       </table>
     </section>
@@ -178,17 +182,13 @@ onMounted(load);
       <p v-if="formError" class="warning-error" role="alert">{{ formError }}</p>
     </section>
 
-    <nav class="warning-pagination" aria-label="预警分页">
-      <button class="button" :disabled="loading || page <= 1" @click="turn(-1)">上一页</button>
-      <span>第 {{ page }} 页</span>
-      <button class="button" :disabled="loading || page * pageSize >= total" @click="turn(1)">下一页</button>
-    </nav>
+    <PaginationBar :page="page" :page-size="pageSize" :total="total" :disabled="loading || !!error" @change="turn" @resize="resize"/>
   </section>
 </template>
 
 <style scoped>
 .warning-filters{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px}
-.warning-filters .selected{background:#e5e4de;font-weight:600}
+
 .warning-search{display:flex;align-items:center;gap:8px;margin-left:auto}
 .warning-search input{font:inherit;border:1px solid var(--border);border-radius:5px;background:#fffdf9;padding:7px 9px;min-width:220px}
 .warning-summary{white-space:normal;min-width:240px}
@@ -209,7 +209,7 @@ td small{display:block;color:var(--muted);font-size:11px}
 .warning-source{font-size:12px;color:var(--muted)}
 .warning-notice{color:#668254;margin:12px 0}
 .warning-error{color:#b8584c;margin:12px 0}
-.warning-pagination{display:flex;align-items:center;justify-content:flex-end;gap:14px;margin:16px 0}
+
 @media(max-width:1100px){.warning-columns{grid-template-columns:1fr}}
 @media(max-width:600px){.warning-search{margin-left:0;width:100%}.warning-search input{flex:1;min-width:0}}
 </style>

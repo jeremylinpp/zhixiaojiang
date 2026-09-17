@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import PageHeader from './ui/PageHeader.vue';
+import EmptyState from './ui/EmptyState.vue';
 import {onMounted,ref} from 'vue';
 import {request} from '../api';
 
@@ -75,10 +77,7 @@ onMounted(async()=>{ await load(); if(targets.value.length) await inspect(target
 
 <template>
   <section class="page-scroll workspace-page">
-    <header class="workspace-heading">
-      <div><p class="eyebrow">{{ cycle.join(' · ') }}</p><h1>班级诊改</h1><p>目标值、当前值与偏差来自实际记录；改进措施与复评结果逐条留痕。</p></div>
-      <button class="button primary" @click="creating = !creating">{{ creating ? '收起新建' : '新增诊改目标' }}</button>
-    </header>
+    <PageHeader title="班级诊改" eyebrow="{{ cycle.join(' · ') }}" description="目标值、当前值与偏差来自实际记录；改进措施与复评结果逐条留痕。"><button class="button primary" @click="creating = !creating">{{ creating ? '收起新建' : '新增诊改目标' }}</button></PageHeader>
 
     <section v-if="creating" class="panel target-create">
       <h2>新增诊改目标</h2>
@@ -109,7 +108,7 @@ onMounted(async()=>{ await load(); if(targets.value.length) await inspect(target
             <td>{{ target.status }}</td>
             <td><button class="table-action" @click="inspect(target)">措施与复评</button></td>
           </tr>
-          <tr v-if="!targets.length"><td colspan="6" class="empty-cell">尚未设置诊改目标</td></tr>
+          <tr v-if="!targets.length"><td colspan="6" class="empty-cell"><EmptyState title="尚未设置诊改目标" description="点击创建目标，设置班级改进方向与目标值。"/></td></tr>
         </tbody>
       </table>
     </section>
