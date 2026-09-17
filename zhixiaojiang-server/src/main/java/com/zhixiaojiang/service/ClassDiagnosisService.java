@@ -3,7 +3,9 @@ package com.zhixiaojiang.service;
 import com.zhixiaojiang.auth.TeacherScope;
 import com.zhixiaojiang.common.AuditRecorder;
 import com.zhixiaojiang.common.util.RequestValues;
-import com.zhixiaojiang.dao.DiagnosisDao;
+import com.zhixiaojiang.dao.DiagnosisMapper;
+import com.zhixiaojiang.model.po.ClassDiagnosisRecord;
+import com.zhixiaojiang.model.po.ClassTarget;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,11 +18,11 @@ public class ClassDiagnosisService {
     /** 八字循环：目标、标准、计划、实施、监测、诊断、改进、优化。 */
     private static final List<String> CYCLE = List.of("目标", "标准", "计划", "实施", "监测", "诊断", "改进", "优化");
 
-    private final DiagnosisDao diagnoses;
+    private final DiagnosisMapper diagnoses;
     private final TeacherScope scope;
     private final AuditRecorder audit;
 
-    public ClassDiagnosisService(DiagnosisDao diagnoses, TeacherScope scope, AuditRecorder audit) {
+    public ClassDiagnosisService(DiagnosisMapper diagnoses, TeacherScope scope, AuditRecorder audit) {
         this.diagnoses = diagnoses;
         this.scope = scope;
         this.audit = audit;
@@ -40,11 +42,14 @@ public class ClassDiagnosisService {
     @Transactional
     public Map<String, Object> addRecord(long targetId, Map<String, Object> body) {
         scope.requireTarget(targetId);
-        long id = diagnoses.insertRecord(targetId,
-                RequestValues.text(body, "measure", "记录改进措施"),
-                body.get("reviewResult") == null ? null : String.valueOf(body.get("reviewResult")),
-                RequestValues.date(body.get("recordedOn")),
-                scope.teacher());
+        ClassDiagnosisRecord record = new ClassDiagnosisRecord();
+        record.setTargetId(targetId);
+        record.setMeasure(RequestValues.text(body, "measure", "记录改进措施"));
+        record.setReviewResult(body.get("reviewResult") == null ? null : String.valueOf(body.get("reviewResult")));
+        record.setRecordedOn(RequestValues.date(body.get("recordedOn")));
+        record.setCreatedBy(scope.teacher());
+        diagnoses.insertRecord(record);
+        long id = record.getId();
         audit.record("CREATE", "class_diagnosis_record", id, "记录班级诊改措施");
         return Map.of("id", id);
     }
@@ -54,12 +59,15 @@ public class ClassDiagnosisService {
         Object rawClass = body.get("classId");
         long classId = rawClass == null || String.valueOf(rawClass).isBlank() ? scope.defaultClass() : Long.parseLong(String.valueOf(rawClass));
         scope.requireClass(classId);
-        long id = diagnoses.insertTarget(classId,
-                RequestValues.text(body, "name", "新诊改目标"),
-                RequestValues.decimal(body.get("targetValue")),
-                RequestValues.decimal(body.getOrDefault("currentValue", 0)),
-                String.valueOf(body.getOrDefault("unit", "%")),
-                scope.teacher());
+        ClassTarget target = new ClassTarget();
+        target.setClassId(classId);
+        target.setName(RequestValues.text(body, "name", "新诊改目标"));
+        target.setTargetValue(RequestValues.decimal(body.get("targetValue")));
+        target.setCurrentValue(RequestValues.decimal(body.getOrDefault("currentValue", 0)));
+        target.setUnit(String.valueOf(body.getOrDefault("unit", "%")));
+        target.setCreatedBy(scope.teacher());
+        diagnoses.insertTarget(target);
+        long id = target.getId();
         audit.record("CREATE", "class_target", id, "创建班级诊改目标");
         return Map.of("id", id);
     }

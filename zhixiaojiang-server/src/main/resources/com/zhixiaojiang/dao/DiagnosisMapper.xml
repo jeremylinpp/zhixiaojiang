@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zhixiaojiang.dao.DiagnosisMapper">
+
+  <resultMap id="targetRow" type="com.zhixiaojiang.model.vo.ClassTargetRow">
+    <id column="id" property="id"/>
+    <result column="name" property="name"/>
+    <result column="target_value" property="targetValue"/>
+    <result column="current_value" property="currentValue"/>
+    <result column="unit" property="unit"/>
+    <result column="status" property="status"/>
+    <result column="deviation" property="deviation"/>
+  </resultMap>
+
+  <resultMap id="recordRow" type="com.zhixiaojiang.model.vo.DiagnosisRecordRow">
+    <id column="id" property="id"/>
+    <result column="target_id" property="targetId"/>
+    <result column="measure" property="measure"/>
+    <result column="review_result" property="reviewResult"/>
+    <result column="recorded_on" property="recordedOn"/>
+    <result column="created_by" property="createdBy"/>
+  </resultMap>
+
+  <!-- 班级范围用 foreach 展开；空集合时由服务层提前返回，不生成非法 SQL -->
+  <select id="targets" resultMap="targetRow">
+    select id, name, target_value, current_value, unit, status,
+           round(target_value - current_value, 1) as deviation
+    from class_target
+    where class_id in
+    <foreach item="classId" collection="classIds" open="(" separator="," close=")">#{classId}</foreach>
+    order by id
+  </select>
+
+  <select id="records" resultMap="recordRow">
+    select id, target_id, measure, review_result, recorded_on, created_by
+    from class_diagnosis_record
+    where target_id = #{targetId}
+    order by recorded_on desc
+  </select>
+
+  <insert id="insertRecord" useGeneratedKeys="true" keyProperty="id">
+    insert into class_diagnosis_record(target_id, measure, review_result, recorded_on, created_by)
+    values (#{targetId}, #{measure}, #{reviewResult}, #{recordedOn}, #{createdBy})
+  </insert>
+
+  <insert id="insertTarget" useGeneratedKeys="true" keyProperty="id">
+    insert into class_target(class_id, name, target_value, current_value, unit, status, created_by)
+    values (#{classId}, #{name}, #{targetValue}, #{currentValue}, #{unit}, 'IN_PROGRESS', #{createdBy})
+  </insert>
+
+  <update id="update">
+    update class_target
+    set target_value = coalesce(#{targetValue}, target_value),
+        current_value = coalesce(#{currentValue}, current_value),
+        status = coalesce(#{status}, status)
+    where id = #{targetId}
+  </update>
+
+  <update id="review">
+    update class_target
+    set current_value = #{currentValue}, status = coalesce(#{status}, status)
+    where id = #{targetId}
+  </update>
+</mapper>

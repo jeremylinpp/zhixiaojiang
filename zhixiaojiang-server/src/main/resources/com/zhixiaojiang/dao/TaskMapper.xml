@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zhixiaojiang.dao.TaskMapper">
+
+  <resultMap id="taskRow" type="com.zhixiaojiang.model.vo.TaskRow">
+    <id column="id" property="id"/>
+    <result column="module" property="module"/>
+    <result column="title" property="title"/>
+    <result column="description" property="description"/>
+    <result column="due_on" property="dueOn"/>
+    <result column="point_reward" property="pointReward"/>
+    <result column="status" property="status"/>
+  </resultMap>
+
+  <resultMap id="taskStudentRow" type="com.zhixiaojiang.model.vo.TaskStudentRow">
+    <id column="id" property="id"/>
+    <result column="student_id" property="studentId"/>
+    <result column="student_name" property="studentName"/>
+    <result column="status" property="status"/>
+    <result column="completed_on" property="completedOn"/>
+    <result column="teacher_note" property="teacherNote"/>
+  </resultMap>
+
+  <resultMap id="taskReward" type="com.zhixiaojiang.model.vo.TaskReward">
+    <result column="student_id" property="studentId"/>
+    <result column="point_reward" property="pointReward"/>
+    <result column="title" property="title"/>
+  </resultMap>
+
+  <select id="ofTeacher" resultMap="taskRow">
+    select id, module, title, description, due_on, point_reward, status
+    from growth_task
+    where created_by = #{teacherId}
+    order by due_on
+  </select>
+
+  <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+    insert into growth_task(module, title, description, due_on, point_reward, status, created_by)
+    values (#{module}, #{title}, #{description}, #{dueOn}, #{pointReward}, 'PUBLISHED', #{createdBy})
+  </insert>
+
+  <insert id="assign">
+    insert ignore into student_task(task_id, student_id, status)
+    values (#{taskId}, #{studentId}, 'ASSIGNED')
+  </insert>
+
+  <select id="studentsOfTask" resultMap="taskStudentRow">
+    select st.id, st.student_id, st.status, st.completed_on, st.teacher_note, s.name as student_name
+    from student_task st
+    join student s on s.id = st.student_id
+    join class_room c on c.id = s.class_id
+    where st.task_id = #{taskId} and c.teacher_id = #{teacherId}
+  </select>
+
+  <update id="complete">
+    update student_task
+    set status = 'COMPLETED', completed_on = coalesce(completed_on, curdate()), teacher_note = #{note}
+    where id = #{studentTaskId} and status &lt;&gt; 'COMPLETED'
+  </update>
+
+  <select id="rewardOf" resultMap="taskReward">
+    select st.student_id, g.point_reward, g.title
+    from student_task st
+    join growth_task g on g.id = st.task_id
+    where st.id = #{studentTaskId}
+  </select>
+
+  <insert id="awardPoints">
+    insert ignore into point_ledger(student_id, amount, category, reason, idempotency_key, created_by)
+    values (#{studentId}, #{amount}, 'TASK', #{reason}, #{idempotencyKey}, #{actor})
+  </insert>
+
+  <update id="evaluate">
+    update student_task set teacher_note = #{note} where id = #{studentTaskId}
+  </update>
+
+  <select id="findTask" resultMap="taskRow">
+    select id, module, title, point_reward, status from growth_task where id = #{taskId}
+  </select>
+</mapper>
