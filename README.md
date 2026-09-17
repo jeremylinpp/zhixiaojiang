@@ -67,4 +67,4 @@ mvn spring-boot:run
 - AI 通过 `AI_BASE_URL`、`AI_MODEL`、`AI_API_KEY` 接入；未配置或异常时返回标记为 `TEMPLATE` 的规则模板建议。
 - 演示数据使用幂等初始化，不覆盖已有记录。
 - 技术设计与数据口径见 [docs/zhixiaojiang-mvp-technical-design.md](docs/zhixiaojiang-mvp-technical-design.md)。
-- 上线与回滚操作见 [docs/release-guide.md](docs/release-guide.md)，部署形态与一次性准备见 [docs/deployment.md](docs/deployment.md)。
+- 上线与回滚操作见 [docs/deployment.md](docs/deployment.md)。
