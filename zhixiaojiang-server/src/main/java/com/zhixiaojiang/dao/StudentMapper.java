@@ -15,6 +15,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * 学生档案与成长明细的数据访问。
@@ -26,6 +27,9 @@ import java.util.List;
 public interface StudentMapper {
 
     /** 在籍学生分页；成长指数取成长记录平均值。 */
+    /** 锁定学生行：让同一学生的并发写入（提交、附件）串行化。 */
+    Optional<Long> lockById(@Param("studentId") long studentId);
+
     List<StudentListRow> page(@Param("classIds") List<Long> classIds,
                               @Param("like") String like,
                               @Param("size") int size,

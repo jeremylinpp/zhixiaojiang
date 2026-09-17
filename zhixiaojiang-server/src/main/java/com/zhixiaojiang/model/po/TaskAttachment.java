@@ -27,7 +27,7 @@ public class TaskAttachment {
     private String sha256;
 
     /** 列 file_bytes */
-    private String fileBytes;
+    private byte[] fileBytes;
 
     /** 列 created_at */
     private java.time.LocalDateTime createdAt;
@@ -96,11 +96,11 @@ public class TaskAttachment {
         this.sha256 = sha256;
     }
 
-    public String getFileBytes() {
+    public byte[] getFileBytes() {
         return fileBytes;
     }
 
-    public void setFileBytes(String fileBytes) {
+    public void setFileBytes(byte[] fileBytes) {
         this.fileBytes = fileBytes;
     }
 

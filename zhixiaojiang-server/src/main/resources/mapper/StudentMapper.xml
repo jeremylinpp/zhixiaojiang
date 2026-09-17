@@ -23,7 +23,11 @@
         limit #{size} offset #{offset}
     </select>
 
-    <select id="countActive" resultType="int">
+    <select id="lockById" resultType="long">
+    select id from student where id = #{studentId} for update
+  </select>
+
+  <select id="countActive" resultType="int">
         select count(*)
         from student s
         where s.status = 'ACTIVE'

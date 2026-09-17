@@ -35,6 +35,13 @@ TYPE_MAP = {
     "DATE": "java.time.LocalDate",
     "DATETIME": "java.time.LocalDateTime",
     "TIMESTAMP": "java.time.LocalDateTime",
+    # 二进制列：附件内容直接以 byte[] 承载
+    "BLOB": "byte[]",
+    "MEDIUMBLOB": "byte[]",
+    "LONGBLOB": "byte[]",
+    "TINYBLOB": "byte[]",
+    "BINARY": "byte[]",
+    "VARBINARY": "byte[]",
 }
 SKIP_PREFIX = ("PRIMARY KEY", "UNIQUE KEY", "UNIQUE(", "UNIQUE (", "KEY ", "INDEX ", "CONSTRAINT", "FOREIGN KEY")
 

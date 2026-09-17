@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zhixiaojiang.dao.StudentGrowthMapper">
+
+  <resultMap id="portalScore" type="com.zhixiaojiang.model.vo.PortalScoreRow">
+    <id column="id" property="id"/>
+    <result column="subject" property="subject"/>
+    <result column="exam_name" property="examName"/>
+    <result column="score" property="score"/>
+    <result column="full_score" property="fullScore"/>
+    <result column="occurred_on" property="occurredOn"/>
+  </resultMap>
+
+  <resultMap id="portalEvaluation" type="com.zhixiaojiang.model.vo.PortalEvaluationRow">
+    <result column="period_start" property="periodStart"/>
+    <result column="period_end" property="periodEnd"/>
+    <result column="moral_score" property="moralScore"/>
+    <result column="skill_score" property="skillScore"/>
+    <result column="thinking_score" property="thinkingScore"/>
+    <result column="smart_score" property="smartScore"/>
+    <result column="evidence" property="evidence"/>
+  </resultMap>
+
+  <resultMap id="portalSkill" type="com.zhixiaojiang.model.vo.PortalSkillRow">
+    <id column="id" property="id"/>
+    <result column="skill_name" property="skillName"/>
+    <result column="score" property="score"/>
+    <result column="level" property="level"/>
+    <result column="occurred_on" property="occurredOn"/>
+    <result column="evidence" property="evidence"/>
+  </resultMap>
+
+  <resultMap id="portalActivity" type="com.zhixiaojiang.model.vo.PortalActivityRow">
+    <id column="id" property="id"/>
+    <result column="activity_date" property="activityDate"/>
+    <result column="activity_type" property="activityType"/>
+    <result column="detail" property="detail"/>
+  </resultMap>
+
+  <resultMap id="portalGrowthRecord" type="com.zhixiaojiang.model.vo.PortalGrowthRecordRow">
+    <id column="id" property="id"/>
+    <result column="category" property="category"/>
+    <result column="title" property="title"/>
+    <result column="content" property="content"/>
+    <result column="occurred_on" property="occurredOn"/>
+    <result column="status" property="status"/>
+    <result column="feedback" property="feedback"/>
+    <result column="student_id" property="studentId"/>
+    <result column="previous_id" property="previousId"/>
+    <result column="replaced_by" property="replacedBy"/>
+  </resultMap>
+
+  <!-- 字段即白名单：学生端不返回教师内部数据 -->
+  <sql id="recordColumns">
+    select r.id, r.student_id, r.category, r.title, r.content, r.occurred_on, r.status, r.feedback,
+           prior.previous_id, next_revision.replacement_id as replaced_by
+    from student_growth_submission r
+    left join student_growth_revision prior on prior.replacement_id = r.id
+    left join student_growth_revision next_revision on next_revision.previous_id = r.id
+  </sql>
+
+  <select id="lockStudent" resultType="long">
+    select id from student where id = #{studentId} for update
+  </select>
+
+  <select id="scores" resultMap="portalScore">
+    select id, subject, exam_name, score, full_score, occurred_on
+    from score_record
+    where student_id = #{studentId} and occurred_on between #{start} and #{end}
+    order by occurred_on, id
+  </select>
+
+  <select id="evaluations" resultMap="portalEvaluation">
+    select period_start, period_end, moral_score, skill_score, thinking_score, smart_score, evidence
+    from dimension_evaluation
+    where student_id = #{studentId} and period_end between #{start} and #{end}
+    order by period_end desc
+  </select>
+
+  <select id="skills" resultMap="portalSkill">
+    select id, skill_name, score, level, occurred_on, evidence
+    from skill_record
+    where student_id = #{studentId} and occurred_on between #{start} and #{end}
+    order by occurred_on desc, id desc
+  </select>
+
+  <select id="activities" resultMap="portalActivity">
+    select id, activity_date, activity_type, detail
+    from activity_record
+    where student_id = #{studentId} and activity_date between #{start} and #{end}
+    order by activity_date desc, id desc
+  </select>
+
+  <select id="recordsBetween" resultMap="portalGrowthRecord">
+    <include refid="recordColumns"/>
+    where r.student_id = #{studentId} and r.occurred_on between #{start} and #{end}
+    order by r.occurred_on desc, r.id desc
+  </select>
+
+  <select id="recordsOf" resultMap="portalGrowthRecord">
+    <include refid="recordColumns"/>
+    where r.student_id = #{studentId}
+    order by r.id desc
+  </select>
+
+  <select id="submissionByRequestKey" resultMap="portalGrowthRecord">
+    <include refid="recordColumns"/>
+    where r.student_id = #{studentId} and r.request_key = #{requestKey}
+  </select>
+
+  <select id="previousIdOf" resultType="long">
+    select previous_id from student_growth_revision where replacement_id = #{replacementId}
+  </select>
+
+  <select id="submissionStatus" resultType="string">
+    select status from student_growth_submission where id = #{id} and student_id = #{studentId}
+  </select>
+
+  <select id="revisionCount" resultType="int">
+    select count(*) from student_growth_revision where previous_id = #{previousId}
+  </select>
+
+  <insert id="insertSubmission" useGeneratedKeys="true" keyProperty="id">
+    insert into student_growth_submission(student_id, request_key, category, title, content, occurred_on)
+    values (#{studentId}, #{requestKey}, #{category}, #{title}, #{content}, #{occurredOn})
+  </insert>
+
+  <insert id="insertRevision">
+    insert into student_growth_revision(previous_id, replacement_id) values (#{previousId}, #{replacementId})
+  </insert>
+
+  <select id="forReview" resultMap="portalGrowthRecord">
+    <include refid="recordColumns"/>
+    join student s on s.id = r.student_id
+    join class_room c on c.id = s.class_id
+    where r.id = #{id} and c.teacher_id = #{teacherId}
+    for update
+  </select>
+
+  <update id="review">
+    update student_growth_submission
+    set status = #{status}, feedback = #{feedback}, reviewed_at = current_timestamp, reviewed_by = #{reviewer}
+    where id = #{id}
+  </update>
+
+  <insert id="insertActivity" useGeneratedKeys="true" keyProperty="id">
+    insert into activity_record(student_id, activity_date, activity_type, status, detail, created_by)
+    values (#{studentId}, #{activityDate}, #{activityType}, #{status}, #{detail}, #{createdBy})
+  </insert>
+</mapper>

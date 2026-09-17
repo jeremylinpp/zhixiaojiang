@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zhixiaojiang.dao.StudentPortalMapper">
+
+  <resultMap id="homeStudent" type="com.zhixiaojiang.model.vo.PortalHomeStudent">
+    <result column="name" property="name"/>
+    <result column="student_no" property="studentNo"/>
+    <result column="class_name" property="className"/>
+  </resultMap>
+
+  <resultMap id="todoRow" type="com.zhixiaojiang.model.vo.PortalTodoRow">
+    <id column="id" property="id"/>
+    <result column="title" property="title"/>
+    <result column="module" property="module"/>
+    <result column="due_on" property="dueOn"/>
+    <result column="status" property="status"/>
+  </resultMap>
+
+  <select id="homeStudent" resultMap="homeStudent">
+    select s.name, s.student_no, c.name as class_name
+    from student s
+    join class_room c on c.id = s.class_id
+    where s.id = #{studentId}
+  </select>
+
+  <select id="todos" resultMap="todoRow">
+    select st.id, g.title, g.module, g.due_on, st.status
+    from student_task st
+    join growth_task g on g.id = st.task_id
+    where st.student_id = #{studentId} and st.status in ('ASSIGNED', 'RETURNED') and g.status = 'PUBLISHED'
+    order by g.due_on, st.id
+  </select>
+</mapper>

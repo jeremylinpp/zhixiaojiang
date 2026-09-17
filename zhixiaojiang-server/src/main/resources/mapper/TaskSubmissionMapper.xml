@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zhixiaojiang.dao.TaskSubmissionMapper">
+
+  <resultMap id="portalTask" type="com.zhixiaojiang.model.vo.PortalTaskRow">
+    <id column="id" property="id"/>
+    <result column="status" property="status"/>
+    <result column="completed_on" property="completedOn"/>
+    <result column="teacher_note" property="teacherNote"/>
+    <result column="title" property="title"/>
+    <result column="description" property="description"/>
+    <result column="module" property="module"/>
+    <result column="due_on" property="dueOn"/>
+    <result column="point_reward" property="pointReward"/>
+  </resultMap>
+
+  <resultMap id="submissionRow" type="com.zhixiaojiang.model.vo.TaskSubmissionRow">
+    <id column="id" property="id"/>
+    <result column="content" property="content"/>
+    <result column="status" property="status"/>
+    <result column="feedback" property="feedback"/>
+    <result column="created_at" property="createdAt"/>
+    <result column="reviewed_at" property="reviewedAt"/>
+  </resultMap>
+
+  <resultMap id="studentTaskView" type="com.zhixiaojiang.model.vo.StudentTaskView">
+    <id column="id" property="id"/>
+    <result column="status" property="status"/>
+  </resultMap>
+
+  <select id="tasksOf" resultMap="portalTask">
+    select st.id, st.status, st.completed_on, st.teacher_note,
+           g.title, g.description, g.module, g.due_on, g.point_reward
+    from student_task st
+    join growth_task g on g.id = st.task_id
+    where st.student_id = #{studentId} and g.status = 'PUBLISHED'
+    order by g.due_on, st.id
+  </select>
+
+  <select id="owned" resultMap="studentTaskView">
+    select st.id, st.status
+    from student_task st
+    join growth_task g on g.id = st.task_id
+    where st.id = #{studentTaskId} and st.student_id = #{studentId} and g.status = 'PUBLISHED'
+    <if test="lock">for update</if>
+  </select>
+
+  <select id="ofStudentTask" resultMap="submissionRow">
+    select id, content, status, feedback, created_at, reviewed_at
+    from task_submission
+    where student_task_id = #{studentTaskId}
+    order by id desc
+  </select>
+
+  <select id="byRequestKey" resultMap="submissionRow">
+    select id, content, status, feedback, created_at, reviewed_at
+    from task_submission
+    where student_task_id = #{studentTaskId} and request_key = #{requestKey}
+  </select>
+
+  <select id="latest" resultMap="submissionRow">
+    select id, content, status, feedback, created_at, reviewed_at
+    from task_submission
+    where student_task_id = #{studentTaskId}
+    order by id desc
+    limit 1
+  </select>
+
+  <select id="latestId" resultType="long">
+    select max(id) from task_submission where student_task_id = #{studentTaskId}
+  </select>
+
+  <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+    insert into task_submission(student_task_id, request_key, content)
+    values (#{studentTaskId}, #{requestKey}, #{content})
+  </insert>
+
+  <update id="markSubmitted">
+    update student_task set status = 'SUBMITTED' where id = #{studentTaskId}
+  </update>
+
+  <update id="markReturned">
+    update student_task set status = 'RETURNED', teacher_note = #{note} where id = #{studentTaskId}
+  </update>
+
+  <update id="returnSubmission">
+    update task_submission
+    set status = 'RETURNED', feedback = #{feedback}, reviewed_at = current_timestamp, reviewed_by = #{reviewer}
+    where id = #{submissionId}
+  </update>
+
+  <update id="completeSubmission">
+    update task_submission
+    set status = 'COMPLETED', feedback = #{feedback}, reviewed_at = current_timestamp, reviewed_by = #{reviewer}
+    where id = #{submissionId}
+  </update>
+</mapper>

@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zhixiaojiang.dao.TaskAttachmentMapper">
+
+  <resultMap id="attachmentRow" type="com.zhixiaojiang.model.vo.TaskAttachmentRow">
+    <id column="id" property="id"/>
+    <result column="original_name" property="originalName"/>
+    <result column="size_bytes" property="sizeBytes"/>
+  </resultMap>
+
+  <resultMap id="attachmentMeta" type="com.zhixiaojiang.model.vo.AttachmentMeta">
+    <result column="student_task_id" property="studentTaskId"/>
+    <result column="submission_id" property="submissionId"/>
+    <result column="original_name" property="originalName"/>
+  </resultMap>
+
+  <resultMap id="attachmentDigest" type="com.zhixiaojiang.model.vo.AttachmentDigest">
+    <id column="id" property="id"/>
+    <result column="sha256" property="sha256"/>
+    <result column="original_name" property="originalName"/>
+  </resultMap>
+
+  <resultMap id="attachmentFile" type="com.zhixiaojiang.model.po.TaskAttachment">
+    <id column="id" property="id"/>
+    <result column="file_bytes" property="fileBytes"/>
+  </resultMap>
+
+  <select id="byRequestKey" resultMap="attachmentDigest">
+    select id, sha256, original_name
+    from task_attachment
+    where student_task_id = #{studentTaskId} and request_key = #{requestKey}
+  </select>
+
+  <select id="metadata" resultMap="attachmentMeta">
+    select student_task_id, submission_id, original_name
+    from task_attachment
+    where id = #{id}
+  </select>
+
+  <select id="stagedOf" resultMap="attachmentRow">
+    select id, original_name, size_bytes
+    from task_attachment
+    where student_task_id = #{studentTaskId} and submission_id is null
+    order by id
+  </select>
+
+  <select id="filesOf" resultMap="attachmentRow">
+    select id, original_name, size_bytes
+    from task_attachment
+    where submission_id = #{submissionId}
+    order by id
+  </select>
+
+  <select id="stagedCount" resultType="int">
+    select count(*) from task_attachment where student_task_id = #{studentTaskId} and submission_id is null
+  </select>
+
+  <select id="usedBytes" resultType="long">
+    select coalesce(sum(a.size_bytes), 0)
+    from task_attachment a
+    join student_task st on st.id = a.student_task_id
+    where st.student_id = #{studentId}
+  </select>
+
+  <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+    insert into task_attachment(student_task_id, request_key, original_name, content_type, size_bytes, sha256, file_bytes)
+    values (#{studentTaskId}, #{requestKey}, #{originalName}, #{contentType}, #{sizeBytes}, #{sha256}, #{fileBytes})
+  </insert>
+
+  <select id="fileOf" resultMap="attachmentFile">
+    select id, file_bytes from task_attachment where id = #{id}
+  </select>
+
+  <update id="attachToSubmission">
+    update task_attachment set submission_id = #{submissionId}
+    where id = #{id} and student_task_id = #{studentTaskId} and submission_id is null
+  </update>
+
+  <select id="idsOf" resultType="long">
+    select id from task_attachment where submission_id = #{submissionId} order by id
+  </select>
+
+  <delete id="deleteStaged">
+    delete from task_attachment where id = #{id} and submission_id is null
+  </delete>
+
+  <select id="ownedTaskStatus" resultType="string">
+    select st.status
+    from student_task st
+    join growth_task g on g.id = st.task_id
+    where st.id = #{studentTaskId} and st.student_id = #{studentId} and g.status = 'PUBLISHED'
+    <if test="lock">for update</if>
+  </select>
+</mapper>

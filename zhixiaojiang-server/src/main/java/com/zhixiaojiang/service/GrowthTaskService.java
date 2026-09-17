@@ -4,10 +4,12 @@ import com.zhixiaojiang.auth.TeacherScope;
 import com.zhixiaojiang.common.AuditRecorder;
 import com.zhixiaojiang.common.constant.GrowthModule;
 import com.zhixiaojiang.common.util.RequestValues;
+import com.zhixiaojiang.dao.StudentGrowthMapper;
 import com.zhixiaojiang.dao.TaskMapper;
+import com.zhixiaojiang.dao.TaskSubmissionMapper;
+import com.zhixiaojiang.model.po.ActivityRecord;
 import com.zhixiaojiang.model.po.GrowthTask;
 import com.zhixiaojiang.model.vo.TaskReward;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.stereotype.Service;
@@ -27,14 +29,17 @@ public class GrowthTaskService {
     private final TaskMapper tasks;
     private final TeacherScope scope;
     private final AuditRecorder audit;
-    private final JdbcTemplate db;
+    private final TaskSubmissionMapper submissions;
+    private final StudentGrowthMapper growth;
     private final StudentMessageService messages;
 
-    public GrowthTaskService(TaskMapper tasks, TeacherScope scope, AuditRecorder audit, JdbcTemplate db, StudentMessageService messages) {
+    public GrowthTaskService(TaskMapper tasks, TaskSubmissionMapper submissions, StudentGrowthMapper growth,
+                             TeacherScope scope, AuditRecorder audit, StudentMessageService messages) {
         this.tasks = tasks;
+        this.submissions = submissions;
+        this.growth = growth;
         this.scope = scope;
         this.audit = audit;
-        this.db = db;
         this.messages=messages;
     }
 
@@ -82,17 +87,23 @@ public class GrowthTaskService {
         if (note!=null && note.length()>500) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"评价不能超过 500 字");
         if ("RETURNED".equals(assignment.getStatus())) throw new ResponseStatusException(HttpStatus.CONFLICT,"请等待学生补充提交");
         if ("SUBMITTED".equals(assignment.getStatus())) {
-            Long current=db.queryForObject("select max(id) from task_submission where student_task_id=?",Long.class,studentTaskId);
+            Long current=submissions.latestId(studentTaskId).orElse(null);
             if (submissionId==null || !submissionId.equals(current)) throw new ResponseStatusException(HttpStatus.CONFLICT,"提交版本已变化，请查看最新成果后确认");
-            db.update("update task_submission set status='COMPLETED',feedback=?,reviewed_at=current_timestamp,reviewed_by=? where id=?",note,scope.teacher(),submissionId);
+            submissions.completeSubmission(submissionId,note,scope.teacher());
         }
         int changed = tasks.complete(studentTaskId, note);
         if (changed == 1) {
             TaskReward reward = tasks.rewardOf(studentTaskId).orElseThrow();
             tasks.awardPoints(reward.getStudentId(), reward.getPointReward(),
                     "完成任务：" + reward.getTitle(), "task:" + studentTaskId, scope.teacher());
-            db.update("insert into activity_record(student_id,activity_date,activity_type,status,detail,created_by) values(?,curdate(),'六机任务','PARTICIPATED',?,?)",
-                    reward.getStudentId(), "完成任务："+reward.getTitle(),scope.teacher());
+            ActivityRecord activity=new ActivityRecord();
+            activity.setStudentId(reward.getStudentId());
+            activity.setActivityDate(java.time.LocalDate.now());
+            activity.setActivityType("六机任务");
+            activity.setStatus("PARTICIPATED");
+            activity.setDetail("完成任务："+reward.getTitle());
+            activity.setCreatedBy(scope.teacher());
+            growth.insertActivity(activity);
             audit.record("COMPLETE", "student_task", studentTaskId, "确认任务完成并发放机智币");
             messages.send(reward.getStudentId(),"task-complete:"+studentTaskId,"任务已确认完成","任务评价与积分结果已更新，请查看。","任务");
         }
