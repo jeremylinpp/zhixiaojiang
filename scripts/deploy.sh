@@ -11,7 +11,8 @@
 # 用法：
 #   scripts/deploy.sh                 # 跑后端测试 + 前端类型检查，然后上线
 #   scripts/deploy.sh --skip-tests    # 跳过测试（仅本地快速发布）
-#   scripts/deploy.sh --tag v1.2.0    # 指定镜像标签（默认取当前提交短 SHA）
+#   scripts/deploy.sh --tag v1.2.0    # 本次构建使用指定镜像标签（默认取当前提交短 SHA）
+#   scripts/deploy.sh --rollback <标签>  # 回滚：不构建不传包，直接在服务器上用旧镜像重启
 #   scripts/deploy.sh --online        # 首次在新机器上构建时，允许联网拉取 Maven 依赖
 set -euo pipefail
 
@@ -25,11 +26,18 @@ TAG=""
 # 默认离线构建：本机 Maven 仓库已是热的，而 Maven Central 在该网络下极慢。
 # 首次在新机器上构建时用 --online 拉取依赖。
 MVN_MODE=(-o)
+ROLLBACK=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --skip-tests) SKIP_TESTS=1 ;;
     --online) MVN_MODE=() ;;
+    --rollback)
+      shift
+      ROLLBACK=1
+      TAG="${1:-}"
+      [ -n "${TAG}" ] || { echo "--rollback 需要指定镜像标签" >&2; exit 2; }
+      ;;
     --tag) shift; TAG="${1:-}" ;;
     *) echo "未知参数：$1" >&2; exit 2 ;;
   esac
@@ -47,6 +55,35 @@ step() { printf '\n=== %s ===\n' "$1"; }
 step "0/6 预检：服务器连通性与运行配置"
 ssh "${SSH_OPTS[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
   'test -f /opt/zhixiaojiang/app.env && echo "  服务器可达，app.env 已就绪 ✅" || { echo "  缺少 /opt/zhixiaojiang/app.env"; exit 1; }'
+
+if [ "${ROLLBACK}" = "1" ]; then
+  step "回滚到镜像标签 ${TAG}（不构建、不上传）"
+  ssh "${SSH_OPTS[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}" "set -e
+    cd ${DEPLOY_DIR}
+    docker image inspect zhixiaojiang-app:${TAG} >/dev/null 2>&1 || {
+      echo '  服务器上没有该标签的镜像，当前可用标签：'
+      docker images --format '  {{.Repository}}:{{.Tag}}' | grep zhixiaojiang | sort -u
+      exit 1
+    }
+    printf 'IMAGE_TAG=%s\n' '${TAG}' > .env
+    chmod 600 .env
+    IMAGE_TAG=${TAG} docker compose up -d
+    docker compose ps --format 'table {{.Name}}\t{{.Status}}'"
+
+  step "回滚后健康检查"
+  for attempt in $(seq 1 12); do
+    if ssh "${SSH_OPTS[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}" 'curl -fsS -m 5 http://127.0.0.1/api/v1/auth/csrf >/dev/null'; then
+      echo "  回滚完成，健康检查通过 ✅（当前镜像标签：${TAG}）"
+      echo "  站点：http://${DEPLOY_HOST}/"
+      exit 0
+    fi
+    echo "  第 ${attempt} 次探测未就绪，等待 5 秒…"
+    sleep 5
+  done
+  echo "回滚后健康检查失败，最近日志："
+  ssh "${SSH_OPTS[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}" "cd ${DEPLOY_DIR} && docker compose logs --tail=50 app"
+  exit 1
+fi
 
 step "1/6 构建后端 jar（镜像标签 ${TAG}）"
 cd "${REPO_ROOT}/zhixiaojiang-server"
@@ -130,7 +167,7 @@ for attempt in $(seq 1 12); do
     echo "上线完成："
     echo "  站点：http://${DEPLOY_HOST}/"
     echo "  镜像标签：${TAG}"
-    echo "  回滚：scripts/deploy.sh --tag <上一个标签>（服务器上已构建的镜像会被复用）"
+    echo "  回滚：scripts/deploy.sh --rollback <上一个标签>（复用服务器上已构建的镜像）"
     exit 0
   fi
   echo "  第 ${attempt} 次探测未就绪，等待 5 秒…"
