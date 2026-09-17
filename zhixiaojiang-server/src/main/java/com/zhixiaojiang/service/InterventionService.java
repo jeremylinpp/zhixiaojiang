@@ -5,7 +5,9 @@ import com.zhixiaojiang.common.AuditRecorder;
 import com.zhixiaojiang.common.constant.InterventionStatus;
 import com.zhixiaojiang.common.util.JsonValues;
 import com.zhixiaojiang.common.util.RequestValues;
-import com.zhixiaojiang.dao.InterventionDao;
+import com.zhixiaojiang.dao.InterventionMapper;
+import com.zhixiaojiang.model.po.InterventionPlan;
+import com.zhixiaojiang.model.po.InterventionRecord;
 import com.zhixiaojiang.model.dto.InterventionRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -23,11 +25,11 @@ import java.util.Map;
  */
 @Service
 public class InterventionService {
-    private final InterventionDao plans;
+    private final InterventionMapper plans;
     private final TeacherScope scope;
     private final AuditRecorder audit;
 
-    public InterventionService(InterventionDao plans, TeacherScope scope, AuditRecorder audit) {
+    public InterventionService(InterventionMapper plans, TeacherScope scope, AuditRecorder audit) {
         this.plans = plans;
         this.scope = scope;
         this.audit = audit;
@@ -52,7 +54,17 @@ public class InterventionService {
         List<String> suggestions = request.suggestions() == null || request.suggestions().isEmpty()
                 ? List.of("班主任个别谈话", "两周后复评")
                 : request.suggestions();
-        long id = plans.insert(request.studentId(), request.warningId(), title, JsonValues.toJson(suggestions), request.teacherNote(), request.reviewAt(), scope.teacher());
+        InterventionPlan plan = new InterventionPlan();
+        plan.setStudentId(request.studentId());
+        plan.setWarningId(request.warningId());
+        plan.setTitle(title);
+        plan.setStatus(InterventionStatus.DRAFT.name());
+        plan.setSuggestionsJson(JsonValues.toJson(suggestions));
+        plan.setTeacherNote(request.teacherNote());
+        plan.setReviewAt(request.reviewAt());
+        plan.setCreatedBy(scope.teacher());
+        plans.insert(plan);
+        long id = plan.getId();
         audit.record("CREATE", "intervention_plan", id, request.warningId() == null ? "创建帮扶草案" : "由预警 #" + request.warningId() + " 创建帮扶草案");
         return Map.of("id", id, "status", InterventionStatus.DRAFT.name());
     }
@@ -92,9 +104,15 @@ public class InterventionService {
     @Transactional
     public Map<String, Object> addRecord(long planId, Map<String, Object> body) {
         scope.requirePlan(planId, false);
-        plans.insertRecord(planId, String.valueOf(body.get("action")),
-                body.get("result") == null ? null : String.valueOf(body.get("result")), scope.teacher());
-        plans.startIfConfirmed(planId);
+        InterventionRecord record = new InterventionRecord();
+        record.setPlanId(planId);
+        record.setAction(String.valueOf(body.get("action")));
+        record.setStatus("DONE");
+        record.setOccurredOn(java.time.LocalDate.now());
+        record.setResult(body.get("result") == null ? null : String.valueOf(body.get("result")));
+        record.setCreatedBy(scope.teacher());
+        plans.insertRecord(record);
+        plans.startIfConfirmed(planId, InterventionStatus.IN_PROGRESS.name(), InterventionStatus.CONFIRMED.name());
         audit.record("CREATE", "intervention_record", planId, "记录帮扶过程");
         return Map.of("saved", true);
     }

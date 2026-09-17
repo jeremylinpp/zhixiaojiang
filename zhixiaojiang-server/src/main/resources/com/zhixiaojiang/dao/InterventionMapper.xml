@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zhixiaojiang.dao.InterventionMapper">
+
+  <resultMap id="planRow" type="com.zhixiaojiang.model.vo.InterventionPlanRow">
+    <id column="id" property="id"/>
+    <result column="student_id" property="studentId"/>
+    <result column="title" property="title"/>
+    <result column="status" property="status"/>
+    <result column="teacher_note" property="teacherNote"/>
+    <result column="student_name" property="studentName"/>
+    <result column="review_at" property="reviewAt"/>
+  </resultMap>
+
+  <!-- suggestions_json 由 JsonListTypeHandler 解析成数组 -->
+  <resultMap id="planDetail" type="com.zhixiaojiang.model.vo.InterventionPlanDetail">
+    <id column="id" property="id"/>
+    <result column="student_id" property="studentId"/>
+    <result column="warning_id" property="warningId"/>
+    <result column="title" property="title"/>
+    <result column="status" property="status"/>
+    <result column="teacher_note" property="teacherNote"/>
+    <result column="review_at" property="reviewAt"/>
+    <result column="created_at" property="createdAt"/>
+    <result column="student_name" property="studentName"/>
+    <result column="suggestions_json" property="suggestions"
+            typeHandler="com.zhixiaojiang.common.mybatis.JsonListTypeHandler"/>
+  </resultMap>
+
+  <resultMap id="recordRow" type="com.zhixiaojiang.model.vo.InterventionRecordRow">
+    <id column="id" property="id"/>
+    <result column="action" property="action"/>
+    <result column="status" property="status"/>
+    <result column="occurred_on" property="occurredOn"/>
+    <result column="result" property="result"/>
+    <result column="created_by" property="createdBy"/>
+  </resultMap>
+
+  <select id="ofTeacher" resultMap="planRow">
+    select i.id, i.student_id, i.title, i.status, i.teacher_note, i.review_at, s.name as student_name
+    from intervention_plan i
+    join student s on s.id = i.student_id
+    join class_room c on c.id = s.class_id
+    where c.teacher_id = #{teacherId}
+    order by i.updated_at desc
+    limit 200
+  </select>
+
+  <select id="detail" resultMap="planDetail">
+    select i.id, i.student_id, i.warning_id, i.title, i.status, i.teacher_note, i.review_at, i.created_at,
+           i.suggestions_json, s.name as student_name
+    from intervention_plan i
+    join student s on s.id = i.student_id
+    where i.id = #{planId}
+  </select>
+
+  <select id="records" resultMap="recordRow">
+    select id, action, status, occurred_on, result, created_by
+    from intervention_record
+    where plan_id = #{planId}
+    order by id
+  </select>
+
+  <select id="warningBelongsToStudent" resultType="boolean">
+    select count(*) &gt; 0 from warning_record where id = #{warningId} and student_id = #{studentId}
+  </select>
+
+  <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+    insert into intervention_plan(student_id, warning_id, title, status, suggestions_json, teacher_note, review_at, created_by)
+    values (#{studentId}, #{warningId}, #{title}, #{status}, #{suggestionsJson}, #{teacherNote}, #{reviewAt}, #{createdBy})
+  </insert>
+
+  <!-- 只更新传来的字段，未传的保持原值 -->
+  <update id="update">
+    update intervention_plan
+    set title = coalesce(#{title}, title),
+        teacher_note = coalesce(#{teacherNote}, teacher_note),
+        review_at = coalesce(#{reviewAt}, review_at)
+    where id = #{planId}
+  </update>
+
+  <update id="updateStatus">
+    update intervention_plan set status = #{status} where id = #{planId}
+  </update>
+
+  <update id="updateReview">
+    update intervention_plan set review_at = #{reviewAt}, teacher_note = coalesce(#{teacherNote}, teacher_note)
+    where id = #{planId}
+  </update>
+
+  <insert id="insertRecord" useGeneratedKeys="true" keyProperty="id">
+    insert into intervention_record(plan_id, action, status, occurred_on, result, created_by)
+    values (#{planId}, #{action}, #{status}, #{occurredOn}, #{result}, #{createdBy})
+  </insert>
+
+  <update id="startIfConfirmed">
+    update intervention_plan set status = #{inProgress} where id = #{planId} and status = #{confirmed}
+  </update>
+</mapper>

@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zhixiaojiang.dao.WarningMapper">
+
+  <!-- evidence_json 由 JsonListTypeHandler 解析成数组，对外字段名保持 evidence -->
+  <resultMap id="warningRow" type="com.zhixiaojiang.model.vo.WarningRow">
+    <id column="id" property="id"/>
+    <result column="student_id" property="studentId"/>
+    <result column="level" property="level"/>
+    <result column="rule_code" property="ruleCode"/>
+    <result column="summary" property="summary"/>
+    <result column="status" property="status"/>
+    <result column="teacher_note" property="teacherNote"/>
+    <result column="created_at" property="createdAt"/>
+    <result column="student_name" property="studentName"/>
+    <result column="student_no" property="studentNo"/>
+    <result column="evidence_json" property="evidence"
+            typeHandler="com.zhixiaojiang.common.mybatis.JsonListTypeHandler"/>
+  </resultMap>
+
+  <resultMap id="eventRow" type="com.zhixiaojiang.model.vo.WarningEventRow">
+    <id column="id" property="id"/>
+    <result column="action" property="action"/>
+    <result column="note" property="note"/>
+    <result column="created_at" property="createdAt"/>
+    <result column="actor" property="actor"/>
+  </resultMap>
+
+  <sql id="ownedScope">
+    from warning_record w
+    join student s on s.id = w.student_id
+    join class_room c on c.id = s.class_id
+    where c.teacher_id = #{teacherId}
+  </sql>
+
+  <!-- 状态筛选：'ALL' 表示不限状态；其余按枚举名精确匹配 -->
+  <sql id="statusFilter">
+    and (#{filter} = 'ALL' or w.status = #{filter})
+    and (s.name like #{like} or s.student_no like #{like} or w.summary like #{like})
+  </sql>
+
+  <select id="page" resultMap="warningRow">
+    select w.id, w.student_id, w.level, w.rule_code, w.summary, w.status, w.teacher_note, w.created_at,
+           w.evidence_json, s.name as student_name, s.student_no as student_no
+    <include refid="ownedScope"/>
+    <include refid="statusFilter"/>
+    order by w.id desc
+    limit #{size} offset #{offset}
+  </select>
+
+  <select id="count" resultType="long">
+    select count(*)
+    <include refid="ownedScope"/>
+    <include refid="statusFilter"/>
+  </select>
+
+  <select id="findOwned" resultMap="warningRow">
+    select w.id, w.student_id, w.level, w.rule_code, w.summary, w.status, w.teacher_note, w.created_at,
+           w.evidence_json, s.name as student_name, s.student_no as student_no
+    from warning_record w
+    join student s on s.id = w.student_id
+    join class_room c on c.id = s.class_id
+    where w.id = #{warningId} and c.teacher_id = #{teacherId}
+    <if test="lock">for update</if>
+  </select>
+
+  <select id="events" resultMap="eventRow">
+    select a.id, a.action, a.summary as note, a.created_at, coalesce(u.display_name, '教师') as actor
+    from audit_log a
+    left join sys_user u on u.id = a.actor_id
+    where a.entity_type = 'warning_record' and a.entity_id = #{warningId} and a.action in ('TRIAGE', 'CLOSE')
+    order by a.id
+  </select>
+
+  <update id="markReviewed">
+    update warning_record set status = 'REVIEWED', teacher_note = #{note}, level = #{level} where id = #{warningId}
+  </update>
+
+  <update id="markClosed">
+    update warning_record set status = 'CLOSED', closed_at = now() where id = #{warningId}
+  </update>
+
+  <select id="activeStudentIdsOf" resultType="long">
+    select s.id from student s join class_room c on c.id = s.class_id
+    where c.teacher_id = #{teacherId} and s.status = 'ACTIVE'
+  </select>
+
+  <select id="recentMathRatios" resultType="double">
+    select score / full_score from score_record
+    where student_id = #{studentId} and subject = '数学'
+    order by occurred_on desc limit 4
+  </select>
+
+  <select id="lateCountSince" resultType="int">
+    select count(*) from attendance_record
+    where student_id = #{studentId} and status = 'LATE' and attendance_date &gt;= #{since}
+  </select>
+
+  <select id="overdueTaskCount" resultType="int">
+    select count(*) from student_task st join growth_task gt on gt.id = st.task_id
+    where st.student_id = #{studentId} and gt.due_on &lt; #{today} and st.status &lt;&gt; 'COMPLETED'
+  </select>
+
+  <select id="activityCountBetween" resultType="int">
+    select count(*) from activity_record
+    where student_id = #{studentId} and activity_date &gt;= #{from} and activity_date &lt; #{to}
+  </select>
+
+  <select id="activityCountSince" resultType="int">
+    select count(*) from activity_record
+    where student_id = #{studentId} and activity_date &gt;= #{since}
+  </select>
+
+  <insert id="insertIfAbsent">
+    insert ignore into warning_record(student_id, level, rule_code, summary, evidence_json, status)
+    values (#{studentId}, #{level}, #{ruleCode}, #{summary}, #{evidenceJson}, #{status})
+  </insert>
+</mapper>
