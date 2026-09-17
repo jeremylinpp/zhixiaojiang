@@ -2,7 +2,7 @@ package com.zhixiaojiang.service;
 
 import com.zhixiaojiang.auth.TeacherScope;
 import com.zhixiaojiang.common.constant.WarningStatus;
-import com.zhixiaojiang.dao.AssistantDao;
+import com.zhixiaojiang.dao.AssistantMapper;
 import com.zhixiaojiang.dao.WarningMapper;
 import org.springframework.stereotype.Service;
 
@@ -15,12 +15,12 @@ import java.util.Map;
  */
 @Service
 public class AssistantService {
-    private final AssistantDao assistant;
+    private final AssistantMapper assistant;
     private final WarningMapper warnings;
     private final AiAnalysisService ai;
     private final TeacherScope scope;
 
-    public AssistantService(AssistantDao assistant, WarningMapper warnings, AiAnalysisService ai, TeacherScope scope) {
+    public AssistantService(AssistantMapper assistant, WarningMapper warnings, AiAnalysisService ai, TeacherScope scope) {
         this.assistant = assistant;
         this.warnings = warnings;
         this.ai = ai;
@@ -39,9 +39,9 @@ public class AssistantService {
             data.put("openWarnings", 0);
         } else {
             data.put("students", assistant.countStudents(classIds));
-            data.put("growthRecords", assistant.countForStudents(classIds, "growth_record"));
-            data.put("scores", assistant.countForStudents(classIds, "score_record"));
-            data.put("skills", assistant.countForStudents(classIds, "skill_record"));
+            data.put("growthRecords", assistant.countGrowthRecords(classIds));
+            data.put("scores", assistant.countScores(classIds));
+            data.put("skills", assistant.countSkills(classIds));
             data.put("openWarnings", warnings.count(teacher, WarningStatus.OPEN.name(), "%%"));
         }
         data.put("lastRuleAnalysisAt", assistant.lastRuleAnalysisAt(teacher));

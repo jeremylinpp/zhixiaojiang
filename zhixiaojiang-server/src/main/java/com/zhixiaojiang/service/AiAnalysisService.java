@@ -4,8 +4,9 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zhixiaojiang.auth.TeacherScope;
 import com.zhixiaojiang.common.util.JsonValues;
-import com.zhixiaojiang.dao.AnalysisContextDao;
-import com.zhixiaojiang.dao.AnalysisDao;
+import com.zhixiaojiang.dao.AnalysisContextMapper;
+import com.zhixiaojiang.dao.AnalysisMapper;
+import com.zhixiaojiang.model.po.AiAnalysis;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -29,8 +30,8 @@ public class AiAnalysisService {
     /** 出勤只统计最近 30 天，避免长周期数据淹没近期变化。 */
     private static final int ATTENDANCE_WINDOW_DAYS = 30;
 
-    private final AnalysisDao analyses;
-    private final AnalysisContextDao context;
+    private final AnalysisMapper analyses;
+    private final AnalysisContextMapper context;
     private final TeacherScope scope;
     private final ObjectMapper json = new ObjectMapper();
     private final String aiBaseUrl;
@@ -38,7 +39,7 @@ public class AiAnalysisService {
     private final String aiApiKey;
     private final org.springframework.web.client.RestClient aiClient;
 
-    public AiAnalysisService(AnalysisDao analyses, AnalysisContextDao context, TeacherScope scope, org.springframework.core.env.Environment env) {
+    public AiAnalysisService(AnalysisMapper analyses, AnalysisContextMapper context, TeacherScope scope, org.springframework.core.env.Environment env) {
         this.analyses = analyses;
         this.context = context;
         this.scope = scope;
@@ -65,7 +66,13 @@ public class AiAnalysisService {
         Map<String, Object> sent = contextOf(studentId);
         Map<String, Object> result = modelAnalysis(sent).orElseGet(this::template);
         try {
-            analyses.insert(studentId, String.valueOf(result.get("source")), JsonValues.toJson(sent), JsonValues.toJson(result), scope.teacher());
+            AiAnalysis record = new AiAnalysis();
+            record.setStudentId(studentId);
+            record.setSource(String.valueOf(result.get("source")));
+            record.setRequestJson(JsonValues.toJson(sent));
+            record.setResponseJson(JsonValues.toJson(result));
+            record.setCreatedBy(scope.teacher());
+            analyses.insert(record);
         } catch (RuntimeException ignored) {
             // 分析记录写入失败不影响本次建议返回
         }

@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zhixiaojiang.dao.AnalysisContextMapper">
+
+  <resultMap id="aiScore" type="com.zhixiaojiang.model.vo.AiScoreRow">
+    <result column="subject" property="subject"/>
+    <result column="exam_name" property="examName"/>
+    <result column="score" property="score"/>
+    <result column="full_score" property="fullScore"/>
+    <result column="occurred_on" property="occurredOn"/>
+  </resultMap>
+
+  <resultMap id="aiAttendance" type="com.zhixiaojiang.model.vo.AiAttendanceCount">
+    <result column="status" property="status"/>
+    <result column="total" property="total"/>
+  </resultMap>
+
+  <resultMap id="aiBehavior" type="com.zhixiaojiang.model.vo.AiBehaviorRow">
+    <result column="category" property="category"/>
+    <result column="score" property="score"/>
+    <result column="occurred_on" property="occurredOn"/>
+  </resultMap>
+
+  <resultMap id="aiSkill" type="com.zhixiaojiang.model.vo.AiSkillRow">
+    <result column="skill_name" property="skillName"/>
+    <result column="score" property="score"/>
+    <result column="level" property="level"/>
+    <result column="occurred_on" property="occurredOn"/>
+  </resultMap>
+
+  <resultMap id="aiTask" type="com.zhixiaojiang.model.vo.AiTaskRow">
+    <result column="module" property="module"/>
+    <result column="title" property="title"/>
+    <result column="status" property="status"/>
+    <result column="due_on" property="dueOn"/>
+  </resultMap>
+
+  <!-- 字段即白名单：只取事实类数据，不含姓名/学号/联系方式 -->
+  <select id="scores" resultMap="aiScore">
+    select subject, exam_name, score, full_score, occurred_on
+    from score_record
+    where student_id = #{studentId}
+    order by occurred_on desc
+    limit 20
+  </select>
+
+  <select id="attendance" resultMap="aiAttendance">
+    select status, count(*) as total
+    from attendance_record
+    where student_id = #{studentId} and attendance_date &gt;= #{since}
+    group by status
+  </select>
+
+  <select id="behavior" resultMap="aiBehavior">
+    select category, score, occurred_on
+    from behavior_record
+    where student_id = #{studentId}
+    order by occurred_on desc
+    limit 20
+  </select>
+
+  <select id="skills" resultMap="aiSkill">
+    select skill_name, score, level, occurred_on
+    from skill_record
+    where student_id = #{studentId}
+    order by occurred_on desc
+    limit 20
+  </select>
+
+  <select id="tasks" resultMap="aiTask">
+    select gt.module, gt.title, st.status, gt.due_on
+    from student_task st
+    join growth_task gt on gt.id = st.task_id
+    where st.student_id = #{studentId}
+    order by gt.due_on desc
+    limit 20
+  </select>
+</mapper>

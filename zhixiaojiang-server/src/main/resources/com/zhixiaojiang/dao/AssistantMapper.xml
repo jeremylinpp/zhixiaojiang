@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zhixiaojiang.dao.AssistantMapper">
+
+  <!-- 统计的学生范围限定为当前教师负责的班级 -->
+  <sql id="studentIdsOfClasses">
+    select s.id from student s
+    where s.class_id in
+    <foreach item="classId" collection="classIds" open="(" separator="," close=")">#{classId}</foreach>
+  </sql>
+
+  <select id="countStudents" resultType="int">
+    select count(*) from student s
+    where s.class_id in
+    <foreach item="classId" collection="classIds" open="(" separator="," close=")">#{classId}</foreach>
+    and s.status = 'ACTIVE'
+  </select>
+
+  <select id="countGrowthRecords" resultType="int">
+    select count(*) from growth_record t where t.student_id in (<include refid="studentIdsOfClasses"/>)
+  </select>
+
+  <select id="countScores" resultType="int">
+    select count(*) from score_record t where t.student_id in (<include refid="studentIdsOfClasses"/>)
+  </select>
+
+  <select id="countSkills" resultType="int">
+    select count(*) from skill_record t where t.student_id in (<include refid="studentIdsOfClasses"/>)
+  </select>
+
+  <!-- 字符串返回：与旧实现一致的可读时间文本，前端按前 16 位截取 -->
+  <select id="lastRuleAnalysisAt" resultType="string">
+    select max(created_at) from audit_log
+    where action = 'ANALYZE' and actor_id = #{teacherId}
+  </select>
+</mapper>
