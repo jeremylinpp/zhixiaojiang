@@ -89,11 +89,11 @@ step "1/6 构建后端 jar（镜像标签 ${TAG}）"
 cd "${REPO_ROOT}/zhixiaojiang-server"
 if [ "${SKIP_TESTS}" = "1" ]; then
   echo "  已跳过测试（--skip-tests）"
-  mvn "${MVN_MODE[@]}" -B -ntp -q -DskipTests package
+  mvn "${MVN_MODE[@]}" -B -ntp -q -DskipTests clean package
 else
-  mvn "${MVN_MODE[@]}" -B -ntp -q package
+  mvn "${MVN_MODE[@]}" -B -ntp -q clean package
 fi
-JAR="$(ls -t target/zhixiaojiang-server-*.jar | head -1)"
+JAR="$(ls -t target/zhixiaojiang-server-*.jar | grep -v "\.original$" | head -1)"
 echo "  产物：${JAR}（$(du -h "${JAR}" | cut -f1)）"
 
 step "2/6 构建前端"
