@@ -177,7 +177,23 @@ const attendanceDescription = computed(() => {
 });
 /** 概览的待关注事项取真实预警，没有预警时显示空状态，不展示示例数据。 */
 const firstWarning = computed(() => dashboard.value.warnings?.[0]);
-const searchResults = computed(() => groups.value.flatMap(g => g.items).filter(i => i.label.includes(query.value.trim())));
+/** 学生端复用同一套外壳：只替换菜单条目与内容区。 */
+const isStudent = computed(() => accountRole.value === 'STUDENT');
+const studentView = ref('概览');
+const studentGroups = [
+  {
+    label: '我的成长', items: [
+      {label: '概览', icon: Activity}, {label: '六机任务', icon: ListTodo},
+      {label: '成长画像', icon: Radar}, {label: '机智币', icon: Coins},
+    ]
+  },
+  {label: '成长支持', items: [{label: '成长计划', icon: Target}, {label: '消息', icon: Bell}]},
+  {label: '个人', items: [{label: '个人资料', icon: UserRound}]},
+];
+const navGroups = computed(() => isStudent.value ? studentGroups : groups.value);
+const navActive = computed(() => isStudent.value ? studentView.value : active.value);
+
+const searchResults = computed(() => navGroups.value.flatMap(g => g.items).filter(i => i.label.includes(query.value.trim())));
 
 async function open(title: string) {
   panel.value = title;
@@ -194,7 +210,8 @@ function close() {
 
 function choose(title: string) {
   close();
-  active.value = title;
+  if (isStudent.value) studentView.value = title;
+  else active.value = title;
 }
 
 const apiBase = (import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8081/api/v1').replace(/\/$/, '');
@@ -338,7 +355,6 @@ onUnmounted(() => document.removeEventListener('keydown', keys));
       <button class="button" @click="logout">退出登录</button>
     </div>
   </div>
-  <StudentPortal v-else-if="accountRole==='STUDENT'" @logout="logout"/>
   <div v-else :class="{ collapsed }" class="application">
     <header class="topbar">
       <div class="brand-area">
@@ -346,27 +362,30 @@ onUnmounted(() => document.removeEventListener('keydown', keys));
                 @click="collapsed = !collapsed">
           <PanelLeft/>
         </button>
-        <a class="brand" href="#" @click.prevent="active = '概览'">
+        <a class="brand" href="#" @click.prevent="choose('概览')">
           <img alt="" src="/favicon.svg"/> <strong>{{ t('控制台', '智小匠') }}</strong>
         </a>
       </div>
-      <button class="search-button" @click="open('搜索')">
+      <button v-if="!isStudent" class="search-button" @click="open('搜索')">
         <Search/>
         <span>搜索</span><kbd>⌘ K</kbd></button>
+      <span v-else class="topbar-role">学生端</span>
       <div class="top-tools">
-        <button aria-label="通知" class="icon-button notification" @click="open('通知')">
+        <button :aria-label="isStudent ? '消息' : '通知'" class="icon-button notification"
+                @click="isStudent ? choose('消息') : open('通知')">
           <Bell/>
         </button>
-        <button aria-label="个人资料" class="avatar" @click="school ? choose('教师资料') : open('个人资料')">
-          {{ t('J', '师') }}
+        <button :aria-label="isStudent ? '个人资料' : '个人资料'" class="avatar"
+                @click="isStudent ? choose('个人资料') : (school ? choose('教师资料') : open('个人资料'))">
+          {{ isStudent ? '学' : t('J', '师') }}
         </button>
       </div>
     </header>
 
     <aside aria-label="侧边导航" class="sidebar">
-      <section v-for="group in groups" :key="group.label" class="menu-group">
+      <section v-for="group in navGroups" :key="group.label" class="menu-group">
         <p class="group-label">{{ group.label }}</p>
-        <button v-for="item in group.items" :key="item.label" :class="{ selected: active === item.label }"
+        <button v-for="item in group.items" :key="item.label" :class="{ selected: navActive === item.label }"
                 :title="item.label" class="menu-item" @click="choose(item.label)">
           <component :is="item.icon"/>
           <span>{{ item.label }}</span>
@@ -378,7 +397,8 @@ onUnmounted(() => document.removeEventListener('keydown', keys));
     </aside>
 
     <main class="canvas">
-      <div v-if="active === '概览'" class="page-scroll">
+      <StudentPortal v-if="isStudent" :view="studentView" @navigate="studentView = $event"/>
+      <div v-else-if="active === '概览'" class="page-scroll">
         <div class="page-heading"><h1>概览</h1>
           <PixelPet/>
           <span v-if="school" class="demo-tag">{{ live ? '实时数据' : '未连接后端' }}</span><span v-if="liveError"
