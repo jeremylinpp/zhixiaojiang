@@ -1,14 +1,64 @@
 /* Keep labels in the layout while the desktop rail changes width. */
-@media (min-width:601px) {
-  .application{transition:grid-template-columns .28s cubic-bezier(.2,.8,.2,1)}
-  .application.collapsed{--sidebar:64px}
-  .sidebar{overflow-x:hidden;transition:padding .28s ease}
-  .menu-item,.view-switch{overflow:hidden}
-  .group-label,.menu-item span,.view-switch span{opacity:1;transition:opacity .18s ease;white-space:nowrap}
-  .collapsed .group-label,.collapsed .menu-item span,.collapsed .view-switch span{display:block;opacity:0;pointer-events:none}
-  .collapsed .menu-group{margin-top:0}
-  .collapsed .menu-item{justify-content:flex-start;padding:0 8px}
-  .collapsed .view-switch{padding-left:8px}
+@media (min-width: 601px) {
+    .application {
+        transition: grid-template-columns .28s cubic-bezier(.2, .8, .2, 1)
+    }
+
+    .application.collapsed {
+        --sidebar: 64px
+    }
+
+    .sidebar {
+        overflow-x: hidden;
+        transition: padding .28s ease
+    }
+
+    .menu-item, .view-switch {
+        overflow: hidden
+    }
+
+    .group-label, .menu-item span, .view-switch span {
+        opacity: 1;
+        transition: opacity .18s ease;
+        white-space: nowrap
+    }
+
+    .collapsed .group-label, .collapsed .menu-item span, .collapsed .view-switch span {
+        display: block;
+        opacity: 0;
+        pointer-events: none
+    }
+
+    .collapsed .menu-group {
+        margin-top: 0
+    }
+
+    .collapsed .menu-item {
+        justify-content: flex-start;
+        padding: 0 8px
+    }
+
+    .collapsed .view-switch {
+        padding-left: 8px
+    }
 }
-.data-card{overflow-x:auto}
-@media(max-width:600px){.workspace-heading{align-items:flex-start;flex-direction:column;gap:12px}.workspace-toolbar{flex-wrap:wrap}.inline-search{width:100%}}
+
+.data-card {
+    overflow-x: auto
+}
+
+@media (max-width: 600px) {
+    .workspace-heading {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 12px
+    }
+
+    .workspace-toolbar {
+        flex-wrap: wrap
+    }
+
+    .inline-search {
+        width: 100%
+    }
+}

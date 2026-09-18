@@ -1,4 +1,4 @@
-import { createApp } from 'vue';
+import {createApp} from 'vue';
 import '@fontsource-variable/lora';
 import '@fontsource/noto-serif-sc/400.css';
 import '@fontsource/noto-serif-sc/600.css';
@@ -8,4 +8,5 @@ import './style.css';
 import './login.css';
 import './navigation.css';
 import './business-ui.css';
+
 createApp(App).mount('#app');

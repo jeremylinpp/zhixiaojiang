@@ -1,44 +1,309 @@
 /* Business components share structure and spacing; existing theme colors remain. */
-.workspace-page{--control-height:36px;padding:24px}
-.workspace-heading{align-items:center;margin-bottom:24px}
-.ui-page-actions{display:flex;gap:8px;flex-wrap:wrap}
-.workspace-heading h1{font-size:24px;font-weight:600;line-height:1.45}
-.workspace-heading p:not(.eyebrow){font-size:14px;line-height:1.7}
-.workspace-page .button{min-height:var(--control-height);height:auto;border-radius:6px;padding:8px 12px;font-size:14px}
-.workspace-page .button.compact{min-height:28px;padding:5px 9px;font-size:12px}
-.workspace-page :is(input:not([type=checkbox]):not([type=radio]),select,textarea){font:inherit;color:inherit;border:1px solid var(--border);border-radius:6px;min-height:36px;padding:8px 11px;max-width:100%;min-width:0}
-.workspace-page textarea{line-height:1.7;resize:vertical}
-.workspace-page .inline-search input{border:0;background:transparent;min-height:0;padding:0}
-.workspace-page .inline-search{height:36px;background:transparent}
-.workspace-page .action-form{gap:16px}
-.workspace-page .action-form label{gap:8px}
-.workspace-page :is(.workspace-toolbar,.warning-filters,.plan-filters,.growth-filter,.student-picker){padding:16px;border:1px solid var(--border);border-radius:8px;gap:12px;background:var(--card);margin:0 0 16px;flex-wrap:wrap}
-.workspace-page .workspace-toolbar:has(h2){padding:0;border:0;background:none}
-.workspace-page .data-card{border-radius:8px;box-shadow:none}
-.workspace-page .data-card th{font-size:13px;font-weight:600;height:48px}
-.workspace-page .data-card td{height:54px;vertical-align:middle}
-.workspace-page .data-card td:has(.ui-empty){padding:0;white-space:normal}
-.workspace-page .empty-cell{height:auto!important}
-.ui-empty{min-height:240px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:40px 24px;text-align:center;color:var(--muted);white-space:normal}
-.ui-empty strong{font-size:16px;color:#24231f}
-.ui-empty p{max-width:480px;font-size:14px;line-height:1.8}
-.ui-empty .icon-tile{width:40px;height:40px}
-.ui-empty-actions{margin-top:4px}
-.ui-pagination{display:flex;align-items:center;justify-content:flex-end;gap:16px;padding:16px 0;flex-wrap:wrap;font-size:13px;color:var(--muted)}
-.ui-pagination label{display:flex;align-items:center;gap:8px}
-.ui-pagination select{width:76px}
-.ui-pagination-buttons{display:flex;gap:8px}
-.ui-pagination-buttons .button{width:36px;padding:0}
-.ui-pagination svg{width:16px;height:16px}
-.ui-segmented{display:inline-flex;gap:3px;padding:4px;border-radius:7px;background:var(--card);max-width:100%;flex-wrap:wrap}
-.ui-segmented button{padding:7px 12px;min-height:32px;border-radius:5px;font:inherit;font-size:14px;white-space:nowrap;color:var(--muted)}
-.ui-segmented button[aria-pressed=true]{background:#fbfaf7;color:#24231f;box-shadow:0 1px 3px #00000018;font-weight:600}
-.ui-metrics{display:flex;flex-wrap:wrap;overflow:hidden;box-shadow:none;margin-bottom:20px}
-.ui-metric{flex:1 1 180px;padding:20px 24px;display:flex;flex-direction:column;gap:10px;border-right:1px solid var(--border)}
-.ui-metric:last-child{border-right:0}
-.ui-metric>span{font-size:14px;color:var(--muted)}
-.ui-metric>strong{font:700 28px/1.4 'JetBrains Mono Variable',monospace}
-.ui-metric>small{font-size:12px;color:var(--muted);line-height:1.7}
-button:disabled{cursor:not-allowed}
-:is(button,a,input,select,textarea):focus-visible{outline:2px solid #538eb8!important;outline-offset:3px}
-@media(max-width:600px){.workspace-page{padding:16px;--control-height:44px}.workspace-heading{align-items:flex-start}.workspace-heading h1{font-size:22px}.workspace-page :is(input:not([type=checkbox]):not([type=radio]),select){min-height:44px}.ui-pagination{justify-content:flex-start;gap:12px}.ui-pagination-buttons .button{width:44px}.ui-segmented button{min-height:40px}.ui-metric{flex-basis:100%;border-right:0;border-bottom:1px solid var(--border)}.ui-metric:last-child{border-bottom:0}.ui-empty{min-height:200px}.workspace-page :is(.workspace-toolbar,.warning-filters,.plan-filters,.growth-filter,.student-picker){padding:12px}}
+.workspace-page {
+    --control-height: 36px;
+    padding: 24px
+}
+
+.workspace-heading {
+    align-items: center;
+    margin-bottom: 24px
+}
+
+.ui-page-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap
+}
+
+.workspace-heading h1 {
+    font-size: 24px;
+    font-weight: 600;
+    line-height: 1.45
+}
+
+.workspace-heading p:not(.eyebrow) {
+    font-size: 14px;
+    line-height: 1.7
+}
+
+.workspace-page .button {
+    min-height: var(--control-height);
+    height: auto;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 14px
+}
+
+.workspace-page .button.compact {
+    min-height: 28px;
+    padding: 5px 9px;
+    font-size: 12px
+}
+
+.workspace-page :is(input:not([type=checkbox]):not([type=radio]),select,textarea) {
+    font: inherit;
+    color: inherit;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    min-height: 36px;
+    padding: 8px 11px;
+    max-width: 100%;
+    min-width: 0
+}
+
+.workspace-page textarea {
+    line-height: 1.7;
+    resize: vertical
+}
+
+.workspace-page .inline-search input {
+    border: 0;
+    background: transparent;
+    min-height: 0;
+    padding: 0
+}
+
+.workspace-page .inline-search {
+    height: 36px;
+    background: transparent
+}
+
+.workspace-page .action-form {
+    gap: 16px
+}
+
+.workspace-page .action-form label {
+    gap: 8px
+}
+
+.workspace-page :is(.workspace-toolbar,.warning-filters,.plan-filters,.growth-filter,.student-picker) {
+    padding: 16px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    gap: 12px;
+    background: var(--card);
+    margin: 0 0 16px;
+    flex-wrap: wrap
+}
+
+.workspace-page .workspace-toolbar:has(h2) {
+    padding: 0;
+    border: 0;
+    background: none
+}
+
+.workspace-page .data-card {
+    border-radius: 8px;
+    box-shadow: none
+}
+
+.workspace-page .data-card th {
+    font-size: 13px;
+    font-weight: 600;
+    height: 48px
+}
+
+.workspace-page .data-card td {
+    height: 54px;
+    vertical-align: middle
+}
+
+.workspace-page .data-card td:has(.ui-empty) {
+    padding: 0;
+    white-space: normal
+}
+
+.workspace-page .empty-cell {
+    height: auto !important
+}
+
+.ui-empty {
+    min-height: 240px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 40px 24px;
+    text-align: center;
+    color: var(--muted);
+    white-space: normal
+}
+
+.ui-empty strong {
+    font-size: 16px;
+    color: #24231f
+}
+
+.ui-empty p {
+    max-width: 480px;
+    font-size: 14px;
+    line-height: 1.8
+}
+
+.ui-empty .icon-tile {
+    width: 40px;
+    height: 40px
+}
+
+.ui-empty-actions {
+    margin-top: 4px
+}
+
+.ui-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 16px;
+    padding: 16px 0;
+    flex-wrap: wrap;
+    font-size: 13px;
+    color: var(--muted)
+}
+
+.ui-pagination label {
+    display: flex;
+    align-items: center;
+    gap: 8px
+}
+
+.ui-pagination select {
+    width: 76px
+}
+
+.ui-pagination-buttons {
+    display: flex;
+    gap: 8px
+}
+
+.ui-pagination-buttons .button {
+    width: 36px;
+    padding: 0
+}
+
+.ui-pagination svg {
+    width: 16px;
+    height: 16px
+}
+
+.ui-segmented {
+    display: inline-flex;
+    gap: 3px;
+    padding: 4px;
+    border-radius: 7px;
+    background: var(--card);
+    max-width: 100%;
+    flex-wrap: wrap
+}
+
+.ui-segmented button {
+    padding: 7px 12px;
+    min-height: 32px;
+    border-radius: 5px;
+    font: inherit;
+    font-size: 14px;
+    white-space: nowrap;
+    color: var(--muted)
+}
+
+.ui-segmented button[aria-pressed=true] {
+    background: #fbfaf7;
+    color: #24231f;
+    box-shadow: 0 1px 3px #00000018;
+    font-weight: 600
+}
+
+.ui-metrics {
+    display: flex;
+    flex-wrap: wrap;
+    overflow: hidden;
+    box-shadow: none;
+    margin-bottom: 20px
+}
+
+.ui-metric {
+    flex: 1 1 180px;
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    border-right: 1px solid var(--border)
+}
+
+.ui-metric:last-child {
+    border-right: 0
+}
+
+.ui-metric > span {
+    font-size: 14px;
+    color: var(--muted)
+}
+
+.ui-metric > strong {
+    font: 700 28px/1.4 'JetBrains Mono Variable', monospace
+}
+
+.ui-metric > small {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.7
+}
+
+button:disabled {
+    cursor: not-allowed
+}
+
+:is(button,a,input,select,textarea):focus-visible {
+    outline: 2px solid #538eb8 !important;
+    outline-offset: 3px
+}
+
+@media (max-width: 600px) {
+    .workspace-page {
+        padding: 16px;
+        --control-height: 44px
+    }
+
+    .workspace-heading {
+        align-items: flex-start
+    }
+
+    .workspace-heading h1 {
+        font-size: 22px
+    }
+
+    .workspace-page :is(input:not([type=checkbox]):not([type=radio]),select) {
+        min-height: 44px
+    }
+
+    .ui-pagination {
+        justify-content: flex-start;
+        gap: 12px
+    }
+
+    .ui-pagination-buttons .button {
+        width: 44px
+    }
+
+    .ui-segmented button {
+        min-height: 40px
+    }
+
+    .ui-metric {
+        flex-basis: 100%;
+        border-right: 0;
+        border-bottom: 1px solid var(--border)
+    }
+
+    .ui-metric:last-child {
+        border-bottom: 0
+    }
+
+    .ui-empty {
+        min-height: 200px
+    }
+
+    .workspace-page :is(.workspace-toolbar,.warning-filters,.plan-filters,.growth-filter,.student-picker) {
+        padding: 12px
+    }
+}
